@@ -33,11 +33,10 @@ yarn-error.*
 
 # local env files
 .env*.local
-*.json
 vsolvpeople-firebase-adminsdk-fbsvc-126e482b6a.json
 # typescript
 *.tsbuildinfo
-
+*.gitignore
 # generated native folders
 /ios
 /android
