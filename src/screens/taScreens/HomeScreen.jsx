@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -10,18 +10,15 @@ import {
   StatusBar,
 } from "react-native";
 import { useSelector } from "react-redux";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import { useNavigation, useRoute, useIsFocused } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 
 // Metrics
 import { horizontalScale, verticalScale, moderateScale } from "../../globalstyles/Metrics";
-// import { CustomColors } from "../../styles/CustomColors";
 import { getCustomColors } from "../../styles/CustomColors";
 
 // Icon libraries
 import { FontAwesome5, Ionicons, MaterialIcons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useIsFocused } from "@react-navigation/native";
-
 
 const getIconComponent = (lib) => {
   switch (lib) {
@@ -42,8 +39,7 @@ export default function DashboardScreen() {
   const isDark = useSelector(state => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
 
-  const { openDrawer } = route.params;
-  const modules = useSelector((state) => state.userModules.modules);
+  const { openDrawer, permittedList } = route.params;
   const user = useSelector((state) => state.auth.user);
   const isFocused = useIsFocused();
 
@@ -54,59 +50,40 @@ export default function DashboardScreen() {
     return "Good Evening,";
   };
 
+  const menuItems_TA = [
+    { index: 1, label: "Tour ID Creation", iconLib: "MaterialCommunityIcons", iconName: "send", gradient: [CustomColors.SkyBlue, CustomColors.mediumliteGray], route: "travel_maker_summary" },
+    { index: 2, label: "Tour ID Approval", iconLib: "MaterialIcons", iconName: "check-circle-outline", gradient: [CustomColors.liteRed, CustomColors.mediumliteRed], route: "travel_approver_summary" },
+    { index: 3, label: "Advance Request", iconLib: "MaterialCommunityIcons", iconName: "cash-fast", gradient: [CustomColors.mediumeblue, CustomColors.mediumgreen], route: "advance_maker_summary" },
+    { index: 4, label: "Advance Approval", iconLib: "MaterialCommunityIcons", iconName: "cash-check", gradient: [CustomColors.darkgreen, CustomColors.litegreenMedium], route: "advance_approver_summary" },
+    { index: 5, label: "Claim Submission", iconLib: "Ionicons", iconName: "wallet", gradient: [CustomColors.darkYelllow, CustomColors.mediumliteYellow], route: "ExpenseMaker" },
+    { index: 6, label: "Claim Approval", iconLib: "Ionicons", iconName: "wallet", gradient: [CustomColors.darkpurple, CustomColors.mudiumlitepurple], route: "ExpenseApproval" },
+    { index: 7, label: "Cancel Request", iconLib: "MaterialCommunityIcons", iconName: "close-circle-outline", gradient: [CustomColors.pinkDark, CustomColors.liteMediumpink], route: "cancel_maker_summary" },
+    { index: 8, label: "Cancel Approval", iconLib: "MaterialCommunityIcons", iconName: "close-circle", gradient: [CustomColors.litemediumRed, CustomColors.Redlite], route: "cancel_approver_summary" },
+    { index: 9, label: "Assign Approver", iconLib: "MaterialCommunityIcons", iconName: "account-check-outline", gradient: [CustomColors.SkyBlue, CustomColors.mediumliteGray], route: "assign_approver" },
+    { index: 10, label: "Advance Recovery", iconLib: "MaterialCommunityIcons", iconName: "cash-refund", gradient: [CustomColors.mediumeblue, CustomColors.mediumgreen], route: "advance_recovery" },
+    { index: 11, label: "Settlement Approval", iconLib: "MaterialCommunityIcons", iconName: "file-check-outline", gradient: [CustomColors.darkYelllow, CustomColors.mediumliteYellow], route: "settlement_approval" },
+    { index: 12, label: "Tour Report", iconLib: "MaterialCommunityIcons", iconName: "file-chart-outline", gradient: [CustomColors.darkgreen, CustomColors.litegreenMedium], route: "tour_report" },
+  ];
+
   const getFilteredMenuItems = () => {
-    const uniqueModules = modules ? Array.from(new Map(modules.map(m => [m.name, m])).values()) : [];
-    // console.log('uniqueModules', uniqueModules)
-    const defaultMenus = [{ label: "Message Screen", iconLib: "Ionicons", iconName: "chatbubble-ellipses-outline", gradient: ["#FDC830", "#e9daacff"], route: "Message" }];
-
-    // if (selectedModule !== "Admin TA") return menuItems_ECF;
-
-    const taModule = uniqueModules.find((mod) => mod.name === "TA e-Claim");
-    if (!taModule) return defaultMenus;
-
-    const submodules = taModule.submodule || [];
-    const allowedLabels = new Set();
-
-    submodules.forEach((sub) => {
-      const roleNames = sub.role.map((r) => r.name);
-      console.log("Submodule:", sub.name);
-console.log("Roles:", sub.role);
-console.log("Role Names:", roleNames);
-      if (sub.name === "Tour") {
-        if (roleNames.includes("Maker")) { allowedLabels.add("Travel Maker"); allowedLabels.add("Fuel Allowance Maker"); }
-        if (roleNames.includes("Checker")) { allowedLabels.add("Travel Checker"); allowedLabels.add("Date Relaxation"); allowedLabels.add("Fuel Allowance Checker"); }
-        if (roleNames.includes("Admin")) allowedLabels.add("Admin");
-      }
-      if (sub.name === "Expense") {
-        if (roleNames.includes("Maker")) allowedLabels.add("Expense Maker");
-        if (roleNames.includes("Checker")) allowedLabels.add("Expense Approver");
-      }
-    });
-
-    allowedLabels.add("Message Screen");
-    return menuItems_TA.filter((item) => allowedLabels.has(item.label));
+    if (!permittedList || permittedList.length === 0) return [];
+    const permittedIndexes = new Set(permittedList.map((p) => p.index));
+    return menuItems_TA.filter((item) => permittedIndexes.has(item.index));
   };
-
-  // useFocusEffect(
-  //   useCallback(() => {
-  //     // console.log('modules', modules[4].submodule[0].role)
-  //     setMenuData(getFilteredMenuItems());
-  //   }, [modules])
-  // );
 
   useEffect(() => {
     if (isFocused) {
       setMenuData(getFilteredMenuItems());
     }
-  }, [isFocused, modules]);
+  }, [isFocused, permittedList]);
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: CustomColors.backgroundWhite, // Keep strict to CustomColors
+      backgroundColor: CustomColors.backgroundWhite,
     },
     headerWrapper: {
-      marginBottom: verticalScale(50), // Increased to make room for floating card
+      marginBottom: verticalScale(50),
       zIndex: 1,
     },
     headerBackground: {
@@ -146,8 +123,6 @@ console.log("Role Names:", roleNames);
       fontWeight: "700",
       letterSpacing: 0.5,
     },
-
-    // Floating Card Styles
     quickStats: {
       position: 'absolute',
       bottom: verticalScale(-35),
@@ -159,8 +134,7 @@ console.log("Role Names:", roleNames);
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-evenly',
-      // Soft Shadow
-      shadowColor: CustomColors.appThemeColor, // Using theme color for shadow tint
+      shadowColor: CustomColors.appThemeColor,
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.15,
       shadowRadius: 15,
@@ -188,8 +162,6 @@ console.log("Role Names:", roleNames);
       backgroundColor: CustomColors.primaryLight,
       opacity: 0.3,
     },
-
-    // Grid Content
     contentContainer: {
       flex: 1,
       paddingHorizontal: horizontalScale(15),
@@ -210,7 +182,7 @@ console.log("Role Names:", roleNames);
       paddingBottom: verticalScale(40),
     },
     columnWrapper: {
-      justifyContent: 'space-between', // Ensures cards are spread evenly
+      justifyContent: 'space-between',
     },
     card: {
       backgroundColor: CustomColors.backgroundWhite,
@@ -234,7 +206,6 @@ console.log("Role Names:", roleNames);
       justifyContent: "center",
       alignItems: "center",
       marginBottom: verticalScale(12),
-      // Inner shadow simulation via margin
       borderWidth: 0,
     },
     cardLabel: {
@@ -246,26 +217,10 @@ console.log("Role Names:", roleNames);
       marginBottom: verticalScale(8),
     },
     actionArrow: {
-      marginTop: 'auto', // Pushes to bottom
+      marginTop: 'auto',
       opacity: 0.5,
     }
   });
-  // Data Configuration (Unchanged)
-  const menuItems_TA = [
-    { label: "Travel Maker", iconLib: "MaterialCommunityIcons", iconName: "send", gradient: [CustomColors.SkyBlue, CustomColors.mediumliteGray], route: "travel_maker_summary" },
-    { label: "Travel Checker", iconLib: "MaterialIcons", iconName: "check-circle-outline", gradient: [CustomColors.liteRed, CustomColors.mediumliteRed], route: "travel_approver_summary" },
-    { label: "Admin", iconLib: "MaterialCommunityIcons", iconName: "shield-check", gradient: [CustomColors.litemediumRed, CustomColors.Redlite], route: "admin_summary" },
-    { label: "Expense Maker", iconLib: "Ionicons", iconName: "wallet", gradient: [CustomColors.darkYelllow, CustomColors.mediumliteYellow], route: "ExpenseMaker" },
-    { label: "Expense Approver", iconLib: "Ionicons", iconName: "wallet", gradient: [CustomColors.darkpurple, CustomColors.mudiumlitepurple], route: "ExpenseApproval" },
-    { label: "Fuel Allowance Maker", iconLib: "FontAwesome5", iconName: "gas-pump", gradient: [CustomColors.mediumeblue, CustomColors.mediumgreen], route: "fuel_allowance_maker_summary" },
-    { label: "Date Relaxation", iconLib: "MaterialCommunityIcons", iconName: "calendar-clock", gradient: [CustomColors.darkgreen, CustomColors.litegreenMedium], route: "date_relaxation" },
-    { label: "Fuel Allowance Checker", iconLib: "MaterialCommunityIcons", iconName: "clipboard-check-outline", gradient: [CustomColors.pinkDark, CustomColors.liteMediumpink], route: "fuellistall" },
-    { label: "Message Screen", iconLib: "Ionicons", iconName: "chatbubble-ellipses-outline", gradient: [CustomColors.YellowDark, CustomColors.liteMediumYellow], route: "Message" },
-  ];
-
-  // const menuItems_ECF = [
-  //   { label: "ECF", iconLib: "FontAwesome5", iconName: "file-invoice-dollar", gradient: [CustomColors.darkgreen, CustomColors.litegreenMedium], route: "ECF" },
-  // ];
 
   const renderCard = ({ item }) => {
     const IconComponent = getIconComponent(item.iconLib);
@@ -282,7 +237,6 @@ console.log("Role Names:", roleNames);
     );
   };
 
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={CustomColors.appThemeColor} />
@@ -295,26 +249,22 @@ console.log("Role Names:", roleNames);
             colors={[CustomColors.appThemeColor, CustomColors.appThemeColor]}
             style={styles.headerBackground}
           >
-            {/* Top Navigation Row */}
             <View style={styles.headerTopRow}>
               <TouchableOpacity onPress={() => openDrawer()} style={styles.iconButton}>
                 <Ionicons name="menu" size={moderateScale(28)} color={CustomColors.White} />
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.iconButton}>
-                {/* Placeholder for notification or profile */}
                 <Ionicons name="notifications-outline" size={moderateScale(24)} color={CustomColors.White} />
               </TouchableOpacity>
             </View>
 
-            {/* Welcome Text */}
             <View style={styles.welcomeContainer}>
               <Text allowFontScaling={false} style={styles.greetingText}>{getGreeting()}</Text>
               <Text allowFontScaling={false} style={styles.userNameText} numberOfLines={1}>{user?.name || "Traveler"}</Text>
             </View>
           </LinearGradient>
 
-          {/* Floating Info Card (Overlapping) */}
           <View style={styles.quickStats}>
             <View style={styles.statItem}>
               <Text allowFontScaling={false} style={styles.statValue}>{menuData.length}</Text>
@@ -338,7 +288,7 @@ console.log("Role Names:", roleNames);
           <FlatList
             key={isLandscape ? 'landscape' : 'portrait'}
             data={menuData}
-            keyExtractor={(item) => item.label}
+            keyExtractor={(item) => String(item.index)}
             renderItem={renderCard}
             numColumns={isLandscape ? 4 : 3}
             scrollEnabled={false}

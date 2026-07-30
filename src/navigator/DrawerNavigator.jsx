@@ -50,42 +50,112 @@ import { setUserModules } from "../redux/slices/UserModulesSlice";
 const { width, height } = Dimensions.get("window");
 const DRAWER_WIDTH = width * 0.75;
 
+// 🔑 TA submodule tab list — mirrors Angular's taTransactionList
+const TA_TRANSACTION_LIST = [
+  { name: "Tour ID Creation", index: 1 },
+  { name: "Tour ID Approval", index: 2 },
+  { name: "Advance Request", index: 3 },
+  { name: "Advance Approval", index: 4 },
+  { name: "Claim Submission", index: 5 },
+  { name: "Claim Approval", index: 6 },
+  { name: "Cancel Request", index: 7 },
+  { name: "Cancel Approval", index: 8 },
+  { name: "Assign Approver", index: 9 },
+  { name: "Advance Recovery", index: 10 },
+  { name: "Settlement Approval", index: 11 },
+  { name: "Tour Report", index: 12 },
+];
+
+// 🔑 Mirrors ta-transaction-summary.component.ts ngOnInit permission logic
+function getTaPermissions(modules) {
+  const taModule = modules?.find((m) => m.name === "TA e-Claim");
+  const submodules = taModule?.submodule || [];
+
+  let permissionlist = [];
+  const flags = {
+    isAdminApprove: false,
+    recoveryChecker: false,
+    recoveryMaker: false,
+  };
+
+  const getRole = (subName) =>
+    submodules.find((s) => s.name?.toLowerCase() === subName)?.role || [];
+
+  const hasRole = (roleArr, roleName) =>
+    roleArr.some((r) => r.name?.toLowerCase() === roleName);
+
+  // Tour
+  const travelrole = getRole("tour");
+  if (hasRole(travelrole, "maker")) permissionlist.push(1, 3, 5, 7);
+  if (hasRole(travelrole, "checker")) permissionlist.push(2);
+
+  // Expense
+  const expenserole = getRole("expense");
+  if (hasRole(expenserole, "checker")) permissionlist.push(6);
+
+  // Advance
+  const advancerole = getRole("advance");
+  if (hasRole(advancerole, "checker")) permissionlist.push(4);
+
+  // Cancel
+  const cancelrole = getRole("cancel");
+  if (hasRole(cancelrole, "checker")) permissionlist.push(8);
+
+  // Recovery
+  const recoveryrole = getRole("recovery");
+  if (hasRole(recoveryrole, "checker")) {
+    permissionlist.push(10);
+    flags.recoveryChecker = true;
+  }
+  if (hasRole(recoveryrole, "maker")) {
+    permissionlist.push(10);
+    flags.recoveryMaker = true;
+  }
+
+  // Assign
+  const assignrole = getRole("assign");
+  if (hasRole(assignrole, "checker")) permissionlist.push(9);
+  if (hasRole(assignrole, "admin")) flags.isAdminApprove = true;
+
+  // Apuser
+  const apuserrole = getRole("apuser");
+  if (hasRole(apuserrole, "checker")) permissionlist.push(11);
+
+  // Report
+  const reportrole = getRole("report");
+  if (hasRole(reportrole, "checker")) permissionlist.push(12);
+
+  permissionlist = [...new Set(permissionlist)]; // dedupe
+
+  const permittedList = TA_TRANSACTION_LIST.filter((item) =>
+    permissionlist.includes(item.index)
+  );
+
+  return { permittedList, flags, permissionlist };
+}
+
 export default function DrawerNavigator() {
   const [isHome, setIsHome] = useState(true);
   const drawerProgress = useSharedValue(0);
   const navigation = useNavigation();
   const user = useSelector((state) => state.auth.user);
   const modules = useSelector((state) => state.userModules.modules);
+
+  // 🔑 Only show "TA e-Claim" in the drawer's module list
+  const uniqueModules = modules?.filter((m) => m.name === "TA e-Claim") || [];
+
+  // 🔑 Default selected module to TA e-Claim specifically, not modules[0]
   const [selectedModule, setSelectedModule] = useState(
-    modules ? modules[0] : null
+    uniqueModules.length > 0 ? uniqueModules[0] : null
   );
+
   const dispatch = useDispatch();
   const [logoutDialogStatus, setLogoutDialogStatus] = useState(false);
   const isDark = useSelector(state => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
 
-  const normalizedModules = modules?.map((m) => {
-    if (m.name === "Leave Request" || m.name === "Task Management") {
-      return { ...m, displayName: "HRMS" };
-    }
-    if (m.name === "Task") {
-      return { ...m, displayName: "CRM" };
-    }
-    return { ...m, displayName: m.name };
-  }) || [];
-
-
-  const isCRMSelected =
-    selectedModule?.name === "Task" || selectedModule?.name === "CRM";
-
-  const isHRMSSelected =
-    selectedModule?.name === "HRMS" ||
-    selectedModule?.name === "Leave Request" ||
-    selectedModule?.name === "Task Management";
-
-  const uniqueModules = Array.from(
-    new Map(normalizedModules.map((m) => [m.displayName, m])).values()
-  );
+  // 🔑 TA submodule permission list, computed inline (no separate util file)
+  const { permittedList: taPermittedList, flags: taFlags } = getTaPermissions(modules);
 
   const openDrawer = () => {
     drawerProgress.value = withTiming(1, { duration: 300 });
@@ -119,15 +189,7 @@ export default function DrawerNavigator() {
 
   const getIcon = (moduleName) => {
     const icons = {
-      CRM: "view-dashboard-outline",
-      ECF: "file-document-outline",
       "TA e-Claim": "airplane-check",
-      "H+": "plus-circle-outline",
-      "Profile Screen": "account-outline",
-      Vendor: "store-outline",
-      HRMS: "account-group-outline",
-      PRPO: "archive-outline",
-      "Stock and Inventory": "package-variant-closed"
     };
     return icons[moduleName] || "folder-outline";
   };
@@ -293,12 +355,12 @@ export default function DrawerNavigator() {
         style={styles.mainContent}
         edges={["top", "bottom"]}
       >
-        {/* {selectedModule?.name === "Task" && selectedModule?.flag_crm === 1 && (
-          <BottomTabNavigator openDrawer={openDrawer} />
-        )} */}
-
         {selectedModule?.name === "TA e-Claim" && (
-          <TAStackNavigator openDrawer={openDrawer} />
+          <TAStackNavigator
+            openDrawer={openDrawer}
+            permittedList={taPermittedList}
+            taFlags={taFlags}
+          />
         )}
 
         {/* {selectedModule?.name === "PRPO" && (
@@ -378,73 +440,21 @@ export default function DrawerNavigator() {
             showsVerticalScrollIndicator={false}
           >
             <View style={styles.drawerItemsContainer}>
-              {/* <Text style={styles.sectionLabel}>Active Modules</Text> */}
-
-              {/* {uniqueModules.map((module) => (
-                <TouchableOpacity
-                  key={module.name}
-                  style={[
-                    styles.item,
-                    (module.name === "HRMS"
-                      ? isHRMSSelected
-                      : selectedModule?.name === module.name) &&
-                    styles.activeItem,
-                  ]}
-                  onPress={() => {
-                    setSelectedModule(module);
-                    closeDrawer();
-                  }}
-                >
-                  <View style={styles.itemRow}>
-                    <MaterialCommunityIcons
-                      name={getIcon(module.name)}
-                      size={22}
-                      color={
-                        (
-                          module.name === "HRMS"
-                            ? isHRMSSelected
-                            : selectedModule?.name === module.name
-                        )
-                          ? CustomColors.backgroundWhite
-                          : CustomColors.textDarkGray
-                      }
-                      style={{ marginRight: 15 }}
-                    />
-                    <Text allowFontScaling={false}
-                      style={[
-                        styles.itemText,
-                        (module.name === "HRMS"
-                          ? isHRMSSelected
-                          : selectedModule?.name === module.name) &&
-                        styles.activeItemText,
-                      ]}
-                    >
-                      {module.name}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))} */}
-
               {uniqueModules.map((module) => {
-                const isActive =
-                  module.displayName === "HRMS"
-                    ? isHRMSSelected
-                    : module.displayName === "CRM"
-                      ? isCRMSelected
-                      : selectedModule?.name === module.name;
+                const isActive = selectedModule?.name === module.name;
 
                 return (
                   <TouchableOpacity
-                    key={module.displayName}
+                    key={module.name}
                     style={[styles.item, isActive && styles.activeItem]}
                     onPress={() => {
-                      setSelectedModule(module); // stores original name e.g. "Task"
+                      setSelectedModule(module);
                       closeDrawer();
                     }}
                   >
                     <View style={styles.itemRow}>
                       <MaterialCommunityIcons
-                        name={getIcon(module.displayName)}
+                        name={getIcon(module.name)}
                         size={22}
                         color={isActive ? CustomColors.backgroundWhite : CustomColors.textDarkGray}
                         style={{ marginRight: 15 }}
@@ -453,7 +463,7 @@ export default function DrawerNavigator() {
                         allowFontScaling={false}
                         style={[styles.itemText, isActive && styles.activeItemText]}
                       >
-                        {module.displayName}  {/* Show "CRM" not "Task" */}
+                        {module.name}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -462,23 +472,9 @@ export default function DrawerNavigator() {
             </View>
 
             {/* Footer Items */}
-            <View  style={styles.footerLogout1}>
+            <View style={styles.footerLogout1}>
 
             </View>
-            {/* <TouchableOpacity
-              style={styles.footerLogout1}
-              onPress={() => {
-                navigation.navigate("routemap");
-                closeDrawer();
-              }}
-            >
-              <MaterialIcons
-                name="location-searching"
-                size={28}
-                color={CustomColors.darkGray}
-              />
-              <Text allowFontScaling={false} style={styles.footerText}>Location History</Text>
-            </TouchableOpacity> */}
 
             <TouchableOpacity
               style={styles.footerLogout}
@@ -527,18 +523,3 @@ export default function DrawerNavigator() {
     </View>
   );
 }
-
-const DrawerItem = ({ label, icon, onPress }) => (
-  <TouchableOpacity onPress={onPress} style={styles.item}>
-    <View style={styles.itemRow}>
-      <MaterialCommunityIcons
-        name={icon}
-        size={22}
-        color={CustomColors.textDarkGray}
-        style={{ marginRight: 15 }}
-      />
-      <Text allowFontScaling={false} style={styles.itemText}>{label}</Text>
-    </View>
-  </TouchableOpacity>
-);
-

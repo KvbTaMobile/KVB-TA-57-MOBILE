@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "226031622891",
+    "project_id": "vsolvpeople",
+    "storage_bucket": "vsolvpeople.firebasestorage.app"
+  },
+  "client": [
+    
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:226031622891:android:0c41e7a871508040d5bcae",
+        "android_client_info": {
+          "package_name": "com.vsolv.KVB"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "226031622891-h23ep6e0clnagg90dqekjvefg9rqobgr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTrJT2JvMjswKQ4qDT6X2XsApZ4ffQDHE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "226031622891-h23ep6e0clnagg90dqekjvefg9rqobgr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

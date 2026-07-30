@@ -32,12 +32,14 @@ import ExpenseApprovalList from "../screens/taScreens/ExpenseApprovalSummary";
 // import VendorAddressScreen from "../screens/Vendor/VendorAddressScreen";
 // import VendorContactScreen from "../screens/Vendor/VendorContactScreen";
 // import VendorProfileScreen from "../screens/Vendor/VendorProfileScreen";
+
 import { CustomColors } from "../styles/CustomColors";
 const Stack = createNativeStackNavigator();
 import { SCREEN_NAMES } from "../utilities/expenseType";
 import Ccbs from "../screens/taScreens/Cbbs";
 
-const TAStackNavigator = ({ route, openDrawer, selectedModule }) => {
+// 🔑 NEW — accept permittedList / taFlags from DrawerNavigator
+const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, taFlags }) => {
   return (
     <Stack.Navigator
       screenOptions={{
@@ -55,7 +57,13 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule }) => {
         name="home"
         component={DashboardScreen}
         options={{ headerShown: false }}
-        initialParams={{ selectedModule, openDrawer: () => openDrawer() }}
+        initialParams={{
+          selectedModule,
+          openDrawer: () => openDrawer(),
+          // 🔑 NEW — pass the filtered TA tab list + role flags down to DashboardScreen
+          permittedList,
+          taFlags,
+        }}
       />
 
       <Stack.Screen
@@ -173,71 +181,8 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule }) => {
         options={{ headerBackTitleVisible: false }}
       />
       {/*
-      <Stack.Screen
-        name="travel_Cancel_maker_summary"
-        component={TravelCancelMakerSummary}
-        options={{ headerBackTitleVisible: false }}
-      />
-      <Stack.Screen
-        name="travel_Cancel_approver_summary"
-        component={TravelCancelApproverSummary}
-        options={{ headerBackTitleVisible: false }}
-      />
-    
-
-      
-      
-      <Stack.Screen
-        name="ExpenseDetail"
-        component={ExpenseDetail}
-        options={{ headerBackTitleVisible: false }}
-      ></Stack.Screen>
-    
-      <Stack.Screen
-        name="fuel_allowance_maker_summary_deep"
-        component={FuelAllowanceSummaryAction}
-        options={{ headerBackTitleVisible: false }}
-      />
-
-    
-
-    
-
-     
-
-      <Stack.Screen
-        name="fuelaction"
-        component={FuelAllowanceActionScreen}
-        options={{ headerBackTitleVisible: false }}
-      />
-    
-      <Stack.Screen
-        name="vendorMaker"
-        component={vendorMakerScreen}
-        options={{
-          headerBackTitleVisible: false  // ✅ correct as a screen option
-        }}
-      />
-      <Stack.Screen
-        name="vendor_creation"
-        component={VendorCreationScreen}
-        options={{ headerBackTitleVisible: false }}
-      />
-      <Stack.Screen
-        name="vendor_address"
-        component={VendorAddressScreen}
-        options={{ headerBackTitleVisible: false }}
-      />
-      <Stack.Screen
-        name="vendor_contact"
-        component={VendorContactScreen}
-        options={{ headerBackTitleVisible: false }}
-      />
-      <Stack.Screen
-        name="vendor_profile"
-        component={VendorProfileScreen}
-        options={{ headerBackTitleVisible: false }}
-      /> */}
+      ... (unchanged commented-out screens)
+      */}
     </Stack.Navigator>
   );
 };

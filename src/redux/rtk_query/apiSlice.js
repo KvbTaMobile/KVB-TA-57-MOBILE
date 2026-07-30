@@ -1263,7 +1263,79 @@ employeeList: builder.query({
         };
       },
     }),
+// Advance
+getAdvanceMakerSummary: builder.query({
+  query: ({ page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/touradvance?page=${page}${val}`,
+    method: "GET",
+  }),
+}),
+getAdvanceApproverSummary: builder.query({
+  query: ({ status = 2, page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/tourapprove/advance?status=${status}&page=${page}${val}`,
+    method: "GET",
+  }),
+}),
 
+// Cancel
+getCancelMakerSummary: builder.query({
+  query: ({ page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/cancelled_data?type=TourCancel&page=${page}${val}`,
+    method: "GET",
+  }),
+}),
+getCancelApproverSummary: builder.query({
+  query: ({ status = 2, page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/tourapprove/TourCancel?status=${status}&page=${page}${val}`,
+    method: "GET",
+  }),
+}),
+
+// Assign Approver
+getAssignApproverSummary: builder.query({
+  query: ({ page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/approverlist?page=${page}${val}`,
+    method: "GET",
+  }),
+}),
+assignApprover: builder.mutation({
+  query: (payload) => ({
+    url: `${Environment.taServiceUrl}/taserv/approverlist`,
+    method: "POST",
+    body: payload,
+  }),
+}),
+
+// Advance Recovery
+getRecoverySummary: builder.mutation({
+  query: (payload) => ({
+    url: `${Environment.taServiceUrl}/taserv/recovery_summary`,
+    method: "POST",
+    body: payload,
+  }),
+}),
+
+// Settlement Approval (ApUser)
+getApUserSummary: builder.query({
+  query: ({ page = 1, ...filters }) => {
+    const params = new URLSearchParams({ page, ...filters });
+    return {
+      url: `${Environment.taServiceUrl}/taserv/apuser_summary?${params.toString()}`,
+      method: "GET",
+    };
+  },
+}),
+
+// Tour Report
+getTourReportSummary: builder.query({
+  query: ({ page = 1, ...filters }) => {
+    const params = new URLSearchParams({ page, ...filters });
+    return {
+      url: `${Environment.taServiceUrl}/taserv/report_tour_summary?${params.toString()}`,
+      method: "GET",
+    };
+  },
+}),
   }),
 });
 
@@ -1382,5 +1454,13 @@ export const {
   useLazyModelSearchQuery,
   useLazyConfigurationSearchQuery,
 
-
+useLazyGetAdvanceMakerSummaryQuery,
+useLazyGetAdvanceApproverSummaryQuery,
+useLazyGetCancelMakerSummaryQuery,
+useLazyGetCancelApproverSummaryQuery,
+useLazyGetAssignApproverSummaryQuery,
+useAssignApproverMutation,
+useGetRecoverySummaryMutation,
+useLazyGetApUserSummaryQuery,
+useLazyGetTourReportSummaryQuery,
 } = apiSlice;

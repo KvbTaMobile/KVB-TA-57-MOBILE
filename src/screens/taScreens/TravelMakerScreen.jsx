@@ -64,7 +64,8 @@ import {
   useLazyCityListQuery,
   useDeleteRequirementMutation,
   useLazyEmpBaseGetQuery,
-  useLazyGetApprovalFlowQuery, useGetChatBoxQuery
+  useLazyGetApprovalFlowQuery, 
+  // useGetChatBoxQuery
 } from "../../redux/rtk_query/apiSlice";
 import {
   updateField,
@@ -179,16 +180,16 @@ const TravelMakerCreateScreen = ({ route, navigation }) => {
   });
   const [triggerEmpBaseGet, { data: empBaseData }] = useLazyEmpBaseGetQuery();
   const [triggerApprovalFlow] = useLazyGetApprovalFlowQuery();
-  const { data: chatBoxData, isFetching, refetch } = useGetChatBoxQuery(
-    { tourid: tour_id, page: 1 },
-    { skip: !tour_id }
-  );
+  // const { data: chatBoxData, isFetching, refetch } = useGetChatBoxQuery(
+  //   { tourid: tour_id, page: 1 },
+  //   { skip: !tour_id }
+  // );
 
-  const unreadCount =
-    chatBoxData?.data?.reduce(
-      (sum, item) => sum + (item.unread_message || 0),
-      0
-    ) || 0;
+  // const unreadCount =
+  //   chatBoxData?.data?.reduce(
+  //     (sum, item) => sum + (item.unread_message || 0),
+  //     0
+  //   ) || 0;
 
   const [NonBasereasons, setNonBaseReasons] = useState([]);
   const [showNonBaseReason, setShowNonBaseReason] = useState(false);
@@ -4501,13 +4502,13 @@ const formatDateTime = (date) => {
           />
 
           {/* 🔴 Unread badge */}
-          {unreadCount > 0 && (
+          {/* {unreadCount > 0 && (
             <View style={styles.chatBadge}>
               <Text allowFontScaling={false}style={styles.chatBadgeText}>
                 {unreadCount > 9 ? "9+" : unreadCount}
               </Text>
             </View>
-          )}
+          )} */}
         </TouchableOpacity>
       )}
 
