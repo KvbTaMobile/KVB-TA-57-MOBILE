@@ -252,8 +252,9 @@ const FilterModal = ({
                 />
 
                 {renderPicker("Select Employee Branch", "employeeBranch", employeeBranchOptions, localFilters.employeeBranch, null, true)}
+                {  renderPicker("Select Status", "status", statusOptions, localFilters.status, getStatusLabel)}
               </>)}
-            {isAdmin ? (
+            {isAdmin &&(
               <>
                 <TextInput allowFontScaling={false}
                   placeholder="Employee Code"
@@ -278,9 +279,7 @@ const FilterModal = ({
                 {renderPicker("Select Booking Status", "bookingStatus", bookingStatusOptions, localFilters.bookingStatus, getBookingStatusLabel)}
                 {renderPicker("Select Travel Status", "travelStatus", travelStatusOptions, localFilters.travelStatus, getTravelStatusLabel)}
               </>
-            ) : (
-              renderPicker("Select Status", "status", statusOptions, localFilters.status, getStatusLabel)
-            )}
+            ) }
           </ScrollView>
 
           <View style={globalStyles.buttonRow}>
