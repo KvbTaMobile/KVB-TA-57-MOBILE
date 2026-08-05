@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, StyleSheet, Image } from "react-native";
+import { View, StyleSheet, Text, Dimensions } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -8,211 +8,407 @@ import Animated, {
   withDelay,
   withSequence,
   Easing,
+  Extrapolate,
+  cancelAnimation,
+  interpolate,
 } from "react-native-reanimated";
-import Svg, { Circle } from "react-native-svg";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  RadialGradient,
+  Stop,
+  Rect,
+} from "react-native-svg";
 import * as SplashScreen from "expo-splash-screen";
-import { usePushNotificationMutation } from "../../redux/rtk_query/apiSlice";
-import { syncPushTokenOnAppStart } from "../../pushnotification/pushSyncOnAppStart";
-import { horizontalScale, moderateScale, verticalScale } from "../../globalstyles/Metrics";
+
+import {
+  horizontalScale,
+  verticalScale,
+  moderateScale,
+} from "../../globalstyles/Metrics";
 
 SplashScreen.preventAutoHideAsync();
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Brand colors pulled from the KVB mark
-const KVB_YELLOW = "#FFDE17";
-const KVB_GREEN = "#00A651";
+// Brand Palette
+const BRAND_GREEN = "#00853D";
+const LIGHT_GREEN = "#10B981";
+const ACCENT_YELLOW = "#FFC700";
+const DARK_TEXT = "#111827";
+const MUTED_TEXT = "#6B7280";
 
-const RING_SIZE = horizontalScale(160);
-const RING_RADIUS = RING_SIZE / 2 - 8;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const RING_SIZE = horizontalScale(210);
+const STROKE_WIDTH = 8;
+const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-export default function SplashScreenAnimated({ onFinish }) {
+// Easing presets
+const MODERN_BEZIER = Easing.bezier(0.16, 1, 0.3, 1);
+
+export default function ProfessionalSplashScreen({ onFinish }) {
+  /* -------------------------------------------------------------------------- */
+  /*                                SHARED VALUES                               */
+  /* -------------------------------------------------------------------------- */
+  const ambientGlow = useSharedValue(0);
   const ringProgress = useSharedValue(0);
   const ringOpacity = useSharedValue(0);
+  const kvbOpacity = useSharedValue(0);
+  const kvbScale = useSharedValue(0.8);
 
-  const logoOpacity = useSharedValue(0);
-  const logoScale = useSharedValue(0.85);
+  const shinePosition = useSharedValue(-180);
 
-  const nameOpacity = useSharedValue(0);
-  const nameTranslate = useSharedValue(14);
+  const word1 = useSharedValue(0);
+  const word2 = useSharedValue(0);
+  const word3 = useSharedValue(0);
 
-  const taglineOpacity = useSharedValue(0);
-  const taglineTranslate = useSharedValue(10);
+  const dividerWidth = useSharedValue(0);
+  const taglineOffset = useSharedValue(0);
+  const finalPulse = useSharedValue(1);
+  const masterFade = useSharedValue(1);
 
-  const [registerPushDevice] = usePushNotificationMutation();
-
-  // useEffect(() => {
-  //   syncPushTokenOnAppStart(registerPushDevice);
-  // }, []);
-
+  /* -------------------------------------------------------------------------- */
+  /*                            TIMELINE ORCHESTRATION                          */
+  /* -------------------------------------------------------------------------- */
   useEffect(() => {
-    const start = async () => {
+    async function runTimeline() {
       await SplashScreen.hideAsync();
 
-      // Ring draws itself in first — echoes the logo's circular mark
-      ringOpacity.value = withTiming(1, { duration: 300 });
-      ringProgress.value = withTiming(1, {
-        duration: 900,
-        easing: Easing.out(Easing.cubic),
+      // 1. 0 - 400ms: Ambient Yellow Backdrop Expansion
+      ambientGlow.value = withTiming(1, {
+        duration: 500,
+        easing: MODERN_BEZIER,
       });
 
-      // Logo fades/scales in once the ring is mostly drawn
-      logoOpacity.value = withDelay(500, withTiming(1, { duration: 700 }));
-      logoScale.value = withDelay(
-        500,
-        withTiming(1, { duration: 700, easing: Easing.out(Easing.exp) })
+      // 2. 400 - 1200ms: Smooth Arc Stroke Reveal
+      ringOpacity.value = withDelay(350, withTiming(1, { duration: 150 }));
+      ringProgress.value = withDelay(
+        350,
+        withTiming(1, {
+          duration: 900,
+          easing: MODERN_BEZIER,
+        })
       );
 
-      // Full bank name settles in below the logo
-      nameOpacity.value = withDelay(1300, withTiming(1, { duration: 700 }));
-      nameTranslate.value = withDelay(
-        1300,
-        withTiming(0, { duration: 700, easing: Easing.out(Easing.exp) })
+      // 3. 900 - 1600ms: KVB Center Brand Pop
+      kvbOpacity.value = withDelay(850, withTiming(1, { duration: 400 }));
+      kvbScale.value = withDelay(
+        850,
+        withSequence(
+          withTiming(1.06, { duration: 400, easing: MODERN_BEZIER }),
+          withTiming(1, { duration: 300, easing: Easing.out(Easing.quad) })
+        )
       );
 
-      // Tagline follows
-      taglineOpacity.value = withDelay(1900, withTiming(1, { duration: 600 }));
-      taglineTranslate.value = withDelay(1900, withTiming(0, { duration: 600 }));
+      // 4. 1600 - 2300ms: Diagonal Sheen Sweep Across Circle
+      shinePosition.value = withDelay(
+        1550,
+        withTiming(180, {
+          duration: 750,
+          easing: Easing.linear,
+        })
+      );
 
-      setTimeout(onFinish, 4200);
+      // 5. 2300 - 2800ms: Vertical Staggered Text Cascades
+      word1.value = withDelay(2200, withTiming(1, { duration: 300, easing: MODERN_BEZIER }));
+      word2.value = withDelay(2350, withTiming(1, { duration: 300, easing: MODERN_BEZIER }));
+      word3.value = withDelay(2500, withTiming(1, { duration: 300, easing: MODERN_BEZIER }));
+
+      // 6. 2800 - 3200ms: Minimal Divider Expand
+      dividerWidth.value = withDelay(2750, withTiming(1, { duration: 450, easing: MODERN_BEZIER }));
+
+      // 7. 3200 - 3500ms: Tagline Reveal
+      taglineOffset.value = withDelay(3150, withTiming(1, { duration: 400, easing: MODERN_BEZIER }));
+
+      // 8. 3500 - 3800ms: Micro Brand Pulse
+      finalPulse.value = withDelay(
+        3500,
+        withSequence(
+          withTiming(1.025, { duration: 200, easing: Easing.out(Easing.quad) }),
+          withTiming(1, { duration: 250, easing: Easing.inOut(Easing.quad) })
+        )
+      );
+
+      // 9. 3800 - 4200ms: Master Fade Transition Out
+      masterFade.value = withDelay(
+        3800,
+        withTiming(0, {
+          duration: 450,
+          easing: Easing.out(Easing.quad),
+        })
+      );
+
+      setTimeout(() => {
+        onFinish?.();
+      }, 4300);
+    }
+
+    runTimeline();
+
+    return () => {
+      cancelAnimation(ambientGlow);
+      cancelAnimation(ringProgress);
+      cancelAnimation(kvbScale);
+      cancelAnimation(shinePosition);
+      cancelAnimation(masterFade);
     };
-
-    start();
   }, []);
 
-  const ringAnimatedProps = useAnimatedProps(() => ({
-    strokeDashoffset: RING_CIRCUMFERENCE * (1 - ringProgress.value),
+  /* -------------------------------------------------------------------------- */
+  /*                               ANIMATED STYLES                              */
+  /* -------------------------------------------------------------------------- */
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: masterFade.value,
   }));
 
-  const ringWrapStyle = useAnimatedStyle(() => ({
+  const ringProps = useAnimatedProps(() => ({
+    strokeDashoffset: CIRCUMFERENCE * (1 - ringProgress.value * 0.88),
+  }));
+
+  const glowStyle = useAnimatedStyle(() => {
+    const scale = interpolate(ambientGlow.value, [0, 1], [0.3, 1]);
+    const opacity = interpolate(ambientGlow.value, [0, 1], [0, 0.45]);
+    return {
+      opacity,
+      transform: [{ scale }],
+    };
+  });
+
+  const centerBrandStyle = useAnimatedStyle(() => ({
+    opacity: kvbOpacity.value,
+    transform: [{ scale: kvbScale.value * finalPulse.value }],
+  }));
+
+  const ringContainerStyle = useAnimatedStyle(() => ({
     opacity: ringOpacity.value,
   }));
 
-  const logoWrapStyle = useAnimatedStyle(() => ({
-    opacity: logoOpacity.value,
-    transform: [{ scale: logoScale.value }],
+  const shineStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shinePosition.value }, { rotate: "-30deg" }],
+    opacity: interpolate(
+      shinePosition.value,
+      [-180, 0, 180],
+      [0, 0.9, 0],
+      Extrapolate.CLAMP
+    ),
   }));
 
-  const nameStyle = useAnimatedStyle(() => ({
-    opacity: nameOpacity.value,
-    transform: [{ translateY: nameTranslate.value }],
+  const makeWordStyle = (sharedVal) =>
+    useAnimatedStyle(() => ({
+      opacity: sharedVal.value,
+      transform: [
+        { translateY: interpolate(sharedVal.value, [0, 1], [14, 0]) },
+      ],
+    }));
+
+  const word1Style = makeWordStyle(word1);
+  const word2Style = makeWordStyle(word2);
+  const word3Style = makeWordStyle(word3);
+
+  const dividerStyle = useAnimatedStyle(() => ({
+    transform: [{ scaleX: dividerWidth.value }],
+    opacity: dividerWidth.value,
   }));
 
-  const taglineStyle = useAnimatedStyle(() => ({
-    opacity: taglineOpacity.value,
-    transform: [{ translateY: taglineTranslate.value }],
+  const tagStyle = useAnimatedStyle(() => ({
+    opacity: taglineOffset.value,
+    transform: [
+      { translateY: interpolate(taglineOffset.value, [0, 1], [10, 0]) },
+    ],
   }));
 
   return (
-    <View style={styles.container}>
-      {/* RING + LOGO */}
-      <View style={styles.ringStack}>
-        <Animated.View style={[styles.ringSvgWrap, ringWrapStyle]}>
+    <Animated.View style={[styles.container, containerStyle]}>
+      {/* Dynamic Ambient Yellow Glow */}
+      <Animated.View style={[styles.ambientGlow, glowStyle]}>
+        <Svg height={RING_SIZE * 2.2} width={RING_SIZE * 2.2}>
+          <Defs>
+            <RadialGradient id="bgGlow" cx="50%" cy="50%" r="50%">
+              <Stop offset="0%" stopColor={ACCENT_YELLOW} stopOpacity="0.8" />
+              <Stop offset="60%" stopColor={ACCENT_YELLOW} stopOpacity="0.15" />
+              <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle
+            cx={RING_SIZE * 1.1}
+            cy={RING_SIZE * 1.1}
+            r={RING_SIZE * 1.1}
+            fill="url(#bgGlow)"
+          />
+        </Svg>
+      </Animated.View>
+
+      {/* Center Ring + KVB Hero Section */}
+      <View style={styles.heroWrapper}>
+        {/* Vector Rings */}
+        <Animated.View style={[styles.ringLayer, ringContainerStyle]}>
           <Svg width={RING_SIZE} height={RING_SIZE}>
+            {/* Subtle Inner Accent Track */}
             <Circle
               cx={RING_SIZE / 2}
               cy={RING_SIZE / 2}
-              r={RING_RADIUS}
-              stroke={KVB_YELLOW}
-              strokeWidth={6}
+              r={RADIUS - 8}
+              stroke={ACCENT_YELLOW}
+              strokeWidth={2}
+              opacity={0.4}
               fill="none"
-              opacity={0.35}
             />
+            {/* Main Background Track */}
+            <Circle
+              cx={RING_SIZE / 2}
+              cy={RING_SIZE / 2}
+              r={RADIUS}
+              stroke={BRAND_GREEN}
+              strokeWidth={STROKE_WIDTH}
+              opacity={0.12}
+              fill="none"
+            />
+            {/* Dynamic Animated Crescent Arc */}
             <AnimatedCircle
               cx={RING_SIZE / 2}
               cy={RING_SIZE / 2}
-              r={RING_RADIUS}
-              stroke={KVB_GREEN}
-              strokeWidth={6}
-              fill="none"
+              r={RADIUS}
+              stroke={BRAND_GREEN}
+              strokeWidth={STROKE_WIDTH}
               strokeLinecap="round"
-              strokeDasharray={RING_CIRCUMFERENCE}
-              animatedProps={ringAnimatedProps}
-              rotation={-90}
+              fill="none"
+              strokeDasharray={CIRCUMFERENCE}
+              animatedProps={ringProps}
+              rotation="-110"
               origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
             />
           </Svg>
         </Animated.View>
 
-        <Animated.View style={[styles.logoWrap, logoWrapStyle]}>
-          <Image
-            source={require("../../assets/images/logo1.png")}
-            style={styles.logo}
-          />
+        {/* Center KVB Monogram */}
+        <Animated.View style={[styles.kvbCard, centerBrandStyle]}>
+          <Text style={styles.centerKvbText}>KVB</Text>
+
+          {/* Premium Sheen Sweep Effect */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.shineContainer, shineStyle]}
+          >
+            <Svg width={80} height={180}>
+              <Defs>
+                <LinearGradient id="shineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0" />
+                  <Stop offset="50%" stopColor="#FFFFFF" stopOpacity="0.8" />
+                  <Stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+                </LinearGradient>
+              </Defs>
+              <Rect width="80" height="180" fill="url(#shineGrad)" />
+            </Svg>
+          </Animated.View>
         </Animated.View>
       </View>
 
-      {/* FULL BANK NAME */}
-      <Animated.Text style={[styles.name, nameStyle]}>
-        KARUR VYSYA BANK
-      </Animated.Text>
+      {/* Typography Layout */}
+      <View style={styles.titleSection}>
+        <Animated.Text style={[styles.brandTitle, styles.greenText, word1Style]}>
+          KARUR
+        </Animated.Text>
+        <Animated.Text style={[styles.brandTitle, styles.mutedText, word2Style]}>
+          VYSYA
+        </Animated.Text>
+        <Animated.Text style={[styles.brandTitle, styles.greenText, word3Style]}>
+          BANK
+        </Animated.Text>
+      </View>
 
-      <Animated.View style={[styles.divider, nameStyle]} />
+      {/* Accent Divider */}
+      <Animated.View style={[styles.divider, dividerStyle]} />
 
-      <Animated.Text style={[styles.tagline, taglineStyle]}>
+      {/* Brand Tagline */}
+      <Animated.Text style={[styles.tagline, tagStyle]}>
         Smart way to bank
       </Animated.Text>
-    </View>
+    </Animated.View>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*                               STYLESHEET                                   */
+/* -------------------------------------------------------------------------- */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
-
-  ringStack: {
+  ambientGlow: {
+    position: "absolute",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  heroWrapper: {
     width: RING_SIZE,
     height: RING_SIZE,
-    alignItems: "center",
     justifyContent: "center",
-    marginBottom: verticalScale(18),
+    alignItems: "center",
+    marginBottom: verticalScale(28),
   },
-
-  ringSvgWrap: {
+  ringLayer: {
     position: "absolute",
     width: RING_SIZE,
     height: RING_SIZE,
-  },
-
-  logoWrap: {
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
   },
-
-  logo: {
-    width: horizontalScale(90),
-    height: verticalScale(90),
-    resizeMode: "contain",
+  kvbCard: {
+    width: RING_SIZE - STROKE_WIDTH * 4,
+    height: RING_SIZE - STROKE_WIDTH * 4,
+    borderRadius: (RING_SIZE - STROKE_WIDTH * 4) / 2,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
   },
-
-  name: {
-    color: "#1A1A1A",
-    fontSize: moderateScale(20),
-    fontWeight: "700",
-    letterSpacing: moderateScale(2.5),
+  centerKvbText: {
+    fontSize: moderateScale(38),
+    fontWeight: "900",
+    color: DARK_TEXT,
+    letterSpacing: 2,
     textAlign: "center",
   },
-
+  shineContainer: {
+    position: "absolute",
+    width: horizontalScale(80),
+    height: horizontalScale(180),
+  },
+  titleSection: {
+    flexDirection: "column",
+    alignItems: "center",
+    marginTop: verticalScale(8),
+  },
+  brandTitle: {
+    fontSize: moderateScale(28),
+    fontWeight: "800",
+    letterSpacing: 2,
+    lineHeight: moderateScale(34),
+    textAlign: "center",
+  },
+  greenText: {
+    color: BRAND_GREEN,
+  },
+  mutedText: {
+    color: MUTED_TEXT,
+  },
   divider: {
-    width: horizontalScale(46),
+    width: horizontalScale(96),
     height: 3,
     borderRadius: 2,
-    backgroundColor: KVB_GREEN,
-    marginTop: verticalScale(10),
-    marginBottom: verticalScale(10),
+    backgroundColor: BRAND_GREEN,
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(14),
   },
-
   tagline: {
-    color: KVB_GREEN,
-    fontSize: moderateScale(12),
-    fontWeight: "500",
-    letterSpacing: moderateScale(2),
+    fontSize: moderateScale(13),
+    color: BRAND_GREEN,
+    letterSpacing: 1.5,
+    fontWeight: "600",
     textTransform: "uppercase",
-    textAlign: "center",
   },
 });
