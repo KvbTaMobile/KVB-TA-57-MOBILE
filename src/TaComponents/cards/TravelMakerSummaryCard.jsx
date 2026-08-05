@@ -1,11 +1,7 @@
-// Updated TravelMakerSummaryCard with all 9 improvements
-import { StyleSheet, Text, View, TouchableOpacity, Animated } from "react-native";
+import React from "react";
+import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import {
-  FontAwesome5,
-  MaterialIcons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { useSelector } from "react-redux";
 import {
   horizontalScale,
@@ -13,333 +9,317 @@ import {
   moderateScale,
 } from "../../styles/Metrics";
 import { getCustomColors } from "../../styles/CustomColors";
-
 import { Fonts } from "../../styles/Fonts";
-
-
-// Helper for status color
+import ToastMessage from "../../TaComponents/toast/ToastMessage";
 
 const TravelMakerSummaryCard = ({ data, onPress }) => {
-  const isDark = useSelector(state => state.theme.isDark);
+  const isDark = useSelector((state) => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
 
-  const getStatusColor = (status) => {
-    if (!status) return CustomColors.textGray;
-    const lower = status.toLowerCase();
-    if (lower.includes("approved") || lower === "booked") return CustomColors.statusGreen;
-    if (lower.includes("rejected") || lower.includes("cancelled")) return CustomColors.statusRed;
-    if (lower.includes("pending") || lower.includes("not booked") || lower.includes("submitted")) return CustomColors.statusOrange;
-    return CustomColors.statusBlue;
+  // Exact Angular-equivalent tour_status_id string labels
+  const getStatusText = (statusId) => {
+    switch (Number(statusId)) {
+      case 1:
+      case 2:
+        return "Tour Request Submitted To Approver";
+      case 3:
+        return "Tour Request Approved";
+      case 4:
+        return "Tour Request Rejected";
+      case 5:
+        return "Tour Request Returned From Approver";
+      case 6:
+        return "Tour Request Forwarded";
+      case 7:
+        return "Tour Cancel Requested";
+      case 8:
+        return "Tour Cancel Approved";
+      default:
+        return data.tour_status_text || data.status_text || "Submitted";
+    }
+  };
+
+  // Exact Angular status colors
+  const getStatusColor = (statusId) => {
+    switch (Number(statusId)) {
+      case 3:
+      case 8:
+        return CustomColors.statusGreen;
+      case 4:
+        return CustomColors.statusRed;
+      case 5:
+        return CustomColors.statusOrange;
+      case 1:
+      case 2:
+      case 7:
+        return CustomColors.statusYellow || CustomColors.statusOrange;
+      case 6:
+        return CustomColors.primaryBlue;
+      default:
+        return CustomColors.statusBlue;
+    }
   };
 
   const DetailRow = ({ label, value, highlighted, icon }) => (
     <View style={styles.detailRow}>
       <View style={styles.detailLabelWrapper}>
         {icon && <View style={styles.detailIcon}>{icon}</View>}
-        <Text allowFontScaling={false} style={styles.detailLabel}>{label}</Text>
+        <Text allowFontScaling={false} style={styles.detailLabel}>
+          {label}
+        </Text>
       </View>
       <Text
-        allowFontScaling={false} style={highlighted ? styles.highlightedDetailValue : styles.detailValue}
+        allowFontScaling={false}
+        style={highlighted ? styles.highlightedDetailValue : styles.detailValue}
         numberOfLines={1}
+        ellipsizeMode="tail"
       >
         {value}
       </Text>
     </View>
   );
 
-  const TravelModeCount = ({ label, countData, icon }) => {
-    const hasCounts = Object.values(countData || {}).some(
-      (count) => typeof count === "number" && count > 0
-    );
-    if (!hasCounts) return null;
+  const displayApproverName = data.approver_data?.name
+    ? `(${data.approver_data?.code || ""}) ${data.approver_data?.name}`
+    : data.approvedby
+    ? `(${data.approver_code || ""}) ${data.approvedby}`
+    : null;
 
-    return (
-      <View style={styles.travelModeRow}>
-        {icon && <View style={styles.travelModeIcon}>{icon}</View>}
-        <Text allowFontScaling={false} style={styles.travelModeLabel}>{label}</Text>
-        <View style={styles.travelModeCountsContainer}>
-          {Object.entries(countData || {}).map(([status, count]) => (
-            count > 0 && (
-              <View key={status} style={styles.statusChip}>
-                <Text allowFontScaling={false} style={styles.travelModeValue}>{count}</Text>
-                <Text allowFontScaling={false} style={{ color: getStatusColor(status), fontSize: moderateScale(13) }}> ({status})</Text>
-              </View>
-            )
-          ))}
-        </View>
-      </View>
-    );
-  };
+  const displayBranchName = data.branch_name
+    ? `(${data.branch_code || ""}) ${data.branch_name}`
+    : null;
 
-  const displayPersonName =
-    data.from === "MAKER" || data.from === "CANCEL_MAKER"
-      ? `(${data.approver_data?.code}) ${data.approver_data?.name}`
-      : data.from === "CANCEL_CHECKER" || data.from === "CHECKER"
-        ? `(${data.approver_code}) ${data.approvedby}`
-        : null;
-
-  const displayMakerName = `(${data.employee_code}) ${data.employee_name}`;
+  const tourNumberDisplay = data.requestno || data.id || "NEW";
+  const statusId = data.tour_status_id || data.status;
 
   const copyTourNoToClipboard = async (tourNo) => {
     if (tourNo) {
       await Clipboard.setStringAsync(tourNo.toString());
-      // TODO: Replace with Toast or Snackbar if available
-      // alert("Tour number copied to clipboard");
+      ToastMessage(`Copied "${tourNo}" to clipboard`);
     }
   };
 
   const styles = StyleSheet.create({
-    // --- Card Container ---
     cardContainer: {
-      marginHorizontal: horizontalScale(18),
-      marginVertical: verticalScale(12),
+      marginHorizontal: horizontalScale(16),
+      marginVertical: verticalScale(8),
       backgroundColor: CustomColors.backgroundWhite,
-      borderRadius: moderateScale(16),
-      padding: moderateScale(20),
+      borderRadius: moderateScale(14),
+      padding: moderateScale(16),
       shadowColor: CustomColors.textBlack,
-      shadowOffset: { width: 0, height: verticalScale(6) },
-      shadowOpacity: 0.08,
-      shadowRadius: moderateScale(12),
-      elevation: 8,
+      shadowOffset: { width: 0, height: verticalScale(3) },
+      shadowOpacity: 0.1,
+      shadowRadius: moderateScale(6),
+      elevation: 4,
+      borderWidth: 1,
+      borderColor: CustomColors.borderColor || "transparent",
     },
-
-    // --- Header Section ---
     headerRow: {
       flexDirection: "row",
       justifyContent: "space-between",
-      alignItems: "center",
-      borderBottomWidth: moderateScale(1.5),
-      borderBottomColor: CustomColors.dividerGray,
-      paddingBottom: verticalScale(12),
-      marginBottom: verticalScale(16),
+      alignItems: "flex-start",
+      borderBottomWidth: moderateScale(1),
+      borderBottomColor: CustomColors.dividerGray || "#E5E7EB",
+      paddingBottom: verticalScale(10),
+      marginBottom: verticalScale(12),
     },
     tourNoContainer: {
       flex: 1,
+      marginRight: horizontalScale(8),
     },
     labelText: {
       fontFamily: Fonts.regular,
-      fontSize: moderateScale(13),
+      fontSize: moderateScale(12),
       color: CustomColors.textGray,
+      marginBottom: verticalScale(2),
+    },
+    tourNoCopyButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      alignSelf: "flex-start",
     },
     tourNoText: {
       fontFamily: Fonts.bold,
-      fontSize: moderateScale(20),
+      fontSize: moderateScale(17),
       color: CustomColors.appThemeColor,
-      marginRight: horizontalScale(4),
+      marginRight: horizontalScale(-1),
+      
+      
     },
     statusText: {
       fontFamily: Fonts.semiBold,
-      fontSize: moderateScale(13),
+      fontSize: moderateScale(11),
       color: CustomColors.backgroundWhite,
-      backgroundColor: CustomColors.primary,
-      paddingVertical: verticalScale(7),
-      paddingHorizontal: horizontalScale(16),
-      borderRadius: moderateScale(20),
+      paddingVertical: verticalScale(5),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(12),
       overflow: "hidden",
-      maxWidth: horizontalScale(200),
+      maxWidth: horizontalScale(180),
       textAlign: "center",
-      letterSpacing: 0.5,
+      flexShrink: 1,
     },
-
-    // --- Details Section ---
     detailsSection: {
-      marginTop: verticalScale(4),
+      marginTop: verticalScale(2),
     },
     detailRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: verticalScale(12),
+      marginBottom: verticalScale(10),
     },
     detailLabelWrapper: {
       flexDirection: "row",
       alignItems: "center",
       flex: 1,
+      paddingRight: horizontalScale(4),
     },
     detailIcon: {
       marginRight: horizontalScale(6),
     },
     detailLabel: {
       fontFamily: Fonts.medium,
-      fontSize: moderateScale(12),
+      fontSize: moderateScale(13),
       color: CustomColors.textGray,
     },
     detailValue: {
       fontFamily: Fonts.regular,
-      fontSize: moderateScale(14),
+      fontSize: moderateScale(13),
       color: CustomColors.textBlack,
       textAlign: "right",
-      flex: 2,
+      flex: 1.5,
     },
     highlightedDetailValue: {
       fontFamily: Fonts.bold,
-      fontSize: moderateScale(15),
+      fontSize: moderateScale(13),
       color: CustomColors.textBlack,
       textAlign: "right",
-      flex: 2,
-    },
-
-    // --- Travel Modes Section ---
-    travelModesSection: {
-      marginTop: verticalScale(20),
-      paddingTop: verticalScale(16),
-      borderTopWidth: moderateScale(1.5),
-      borderTopColor: CustomColors.dividerGray,
-    },
-    travelModeRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: verticalScale(10),
-    },
-    travelModeIcon: {
-      marginRight: horizontalScale(10),
-    },
-    travelModeLabel: {
-      fontFamily: Fonts.regular,
-      fontSize: moderateScale(12),
-      color: CustomColors.textBlack,
-      flex: 1,
-    },
-    travelModeCountsContainer: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent: "flex-end",
       flex: 1.5,
-    },
-    travelModeValue: {
-      fontFamily: Fonts.semiBold,
-      fontSize: moderateScale(14),
-      color: CustomColors.primaryText,
-    },
-
-    // --- Status Chip ---
-    statusChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: CustomColors.lightGrayBackground,
-      borderRadius: moderateScale(12),
-      paddingHorizontal: horizontalScale(8),
-      paddingVertical: verticalScale(4),
-      marginLeft: horizontalScale(6),
-      marginBottom: verticalScale(6),
-    },
-
-    // --- Reason Section ---
-    reasonSection: {
-      marginTop: verticalScale(20),
-      paddingTop: verticalScale(16),
-      paddingHorizontal: horizontalScale(10),
-      borderTopWidth: moderateScale(1.5),
-      borderTopColor: CustomColors.dividerGray,
-      backgroundColor: CustomColors.backgroundGray2,
-      borderRadius: moderateScale(10),
-    },
-    reasonText: {
-      fontFamily: Fonts.semiBold,
-      fontSize: moderateScale(15),
-      color: CustomColors.textBlack,
-      marginTop: verticalScale(8),
-      lineHeight: moderateScale(24),
     },
   });
 
   return (
-    <TouchableOpacity style={styles.cardContainer} onPress={onPress} activeOpacity={0.9}>
+    <TouchableOpacity
+      style={styles.cardContainer}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={styles.tourNoContainer}>
-          <Text allowFontScaling={false} style={styles.labelText}>Tour No.</Text>
-          <TouchableOpacity onPress={() => copyTourNoToClipboard(data.from === "CHECKER" || data.from === "ADMIN" ? data.tourid : data.id)}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text allowFontScaling={false} style={styles.tourNoText}>{data.from === "CHECKER" || data.from === "ADMIN" ? data.tourid : data.id}</Text>
-              <MaterialIcons name="content-copy" size={16} color={CustomColors.textGray} />
-            </View>
+          <Text allowFontScaling={false} style={styles.labelText}>
+            Tour No
+          </Text>
+          <TouchableOpacity
+            style={styles.tourNoCopyButton}
+            onPress={() => copyTourNoToClipboard(tourNumberDisplay)}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text allowFontScaling={false} style={styles.tourNoText}>
+              {tourNumberDisplay}
+            </Text>
+            <MaterialIcons
+              name="content-copy"
+              size={moderateScale(16)}
+              color={CustomColors.appThemeColor}
+            />
           </TouchableOpacity>
         </View>
-        {data.tour_status_text ? (
-          <Text allowFontScaling={false} style={[styles.statusText, { backgroundColor: getStatusColor(data.tour_status_text), alignSelf: "flex-end" }]}>
-            {data.tour_status_text}
-          </Text>
-        ) : null}
+
+        <Text
+          allowFontScaling={false}
+          style={[
+            styles.statusText,
+            { backgroundColor: getStatusColor(statusId) },
+          ]}
+          numberOfLines={2}
+        >
+          {getStatusText(statusId)}
+        </Text>
       </View>
 
-      {/* Main Details */}
+      {/* Table Details */}
       <View style={styles.detailsSection}>
-        {displayMakerName && (
+        {data.requestdate ? (
           <DetailRow
-            label="Maker"
-            value={displayMakerName}
-            highlighted
-            icon={<MaterialIcons name="person" size={16} color={CustomColors.textGray} />}
+            label="Tour Requested Date"
+            value={data.requestdate}
+            icon={
+              <MaterialIcons
+                name="date-range"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
           />
-        )}
-        {displayPersonName && (
+        ) : null}
+        {data.startdate ? (
+          <DetailRow
+            label="From Date"
+            value={data.startdate}
+            icon={
+              <MaterialIcons
+                name="calendar-today"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+        {data.enddate ? (
+          <DetailRow
+            label="To Date"
+            value={data.enddate}
+            icon={
+              <MaterialIcons
+                name="event"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+        {data.reason ? (
+          <DetailRow
+            label="Reason"
+            value={data.reason}
+            icon={
+              <MaterialIcons
+                name="chat-bubble-outline"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+        {displayBranchName ? (
+          <DetailRow
+            label="Branch"
+            value={displayBranchName}
+            icon={
+              <MaterialIcons
+                name="location-city"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+        {displayApproverName ? (
           <DetailRow
             label="Approver"
-            value={displayPersonName}
+            value={displayApproverName}
             highlighted
-            icon={<MaterialIcons name="verified-user" size={16} color={CustomColors.textGray} />}
+            icon={
+              <MaterialIcons
+                name="verified-user"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
           />
-        )}
-        {data.startdate && (
-          <DetailRow
-            label="Start Date"
-            value={data.startdate}
-            icon={<MaterialIcons name="calendar-today" size={16} color={CustomColors.textGray} />}
-          />
-        )}
-        {data.enddate && (
-          <DetailRow
-            label="End Date"
-            value={data.enddate}
-            icon={<MaterialIcons name="event" size={16} color={CustomColors.textGray} />}
-          />
-        )}
-        {data.requestdate && (
-          <DetailRow
-            label="Requested Date"
-            value={data.requestdate}
-            icon={<MaterialIcons name="date-range" size={16} color={CustomColors.textGray} />}
-          />
-        )}
+        ) : null}
       </View>
-
-      {/* Travel Modes */}
-      <View style={styles.travelModesSection}>
-        <TravelModeCount
-          label="Accommodation"
-          countData={data.accommodation_count}
-          icon={<MaterialIcons name="hotel" size={18} color={CustomColors.primaryBlue} />}
-        />
-        <TravelModeCount
-          label="Bus"
-          countData={data.bus_count}
-          icon={<MaterialCommunityIcons name="bus" size={18} color={CustomColors.primaryBlue} />}
-        />
-        <TravelModeCount
-          label="Train"
-          countData={data.train_count}
-          icon={<MaterialCommunityIcons name="train" size={18} color={CustomColors.primaryBlue} />}
-        />
-        <TravelModeCount
-          label="Air"
-          countData={data.air_count}
-          icon={<FontAwesome5 name="plane" size={18} color={CustomColors.primaryBlue} />}
-        />
-        <TravelModeCount
-          label="Cab"
-          countData={data.cab_count}
-          icon={<MaterialIcons name="local-taxi" size={18} color={CustomColors.primaryBlue} />}
-        />
-      </View>
-
-      {/* Reason */}
-      {data.reason && data.reason.trim() && data.reason !== "--" ? (
-        <View style={styles.reasonSection}>
-          <Text allowFontScaling={false} style={styles.detailLabel}>Reason</Text>
-          <Text allowFontScaling={false} style={styles.reasonText}>{data.reason}</Text>
-        </View>
-      ) : null}
     </TouchableOpacity>
   );
 };

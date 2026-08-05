@@ -163,7 +163,7 @@ export const apiSlice = createApi({
         const params = new URLSearchParams(params_data);
         return {
           url: `${Environment.taServiceUrl
-            }/taserv/document_get?${params.toString()}`,
+            }/taserv/fetch_documents?${params.toString()}`,
         };
       },
     }),
@@ -1007,14 +1007,15 @@ holidayCheck: builder.mutation({
       }),
     }),
 employeeList: builder.query({
-  query: (params_data) => {
-    const params = new URLSearchParams(params_data);
-    return {
-      url: `${Environment.userServiceUrl}/usrserv/branchwise_employee_get/${params_data.branch}?${params.toString()}`,
-      method: "GET",
-    };
-  },
-}),
+      query: (params_data) => {
+        const { branch, ...queryParams } = params_data;
+        const params = new URLSearchParams(queryParams);
+        return {
+          url: `${Environment.userServiceUrl}/usrserv/branchwise_employee_get/${branch}?${params.toString()}`,
+          method: "GET",
+        };
+      },
+    }),
     GetBranchIndentEdit: builder.query({
       query: ({ id }) => {
         // const params = new URLSearchParams(params_data);
@@ -1463,4 +1464,5 @@ useAssignApproverMutation,
 useGetRecoverySummaryMutation,
 useLazyGetApUserSummaryQuery,
 useLazyGetTourReportSummaryQuery,
+
 } = apiSlice;
