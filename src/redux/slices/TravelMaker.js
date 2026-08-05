@@ -23,7 +23,7 @@ const getTourStatusText = (id) => {
 };
 
 const getTourApproverStatusText = (tour_status, apptype) => {
-  if (apptype === "TOUR") {
+  if (apptype === "TOUR" || apptype === "tour") {
     switch (tour_status) {
       case "PENDING":
         return "PENDING";
@@ -58,7 +58,6 @@ const getTourApproverStatusText = (tour_status, apptype) => {
   }
 };
 
-
 const TravelMaker = createSlice({
   name: "TravelMaker",
   initialState: {
@@ -71,48 +70,82 @@ const TravelMaker = createSlice({
   },
   reducers: {
     setTravelMakerSummaryArray: (state, action) => {
-      const travelArray = action.payload.data.map((item) => ({ ...item, tour_status_text: getTourStatusText(item.tour_status_id), from: item.tour_status_id === 3 ? 'CANCEL_MAKER' : 'MAKER' }));
-
-      state.travelMakerSummaryArray = [...state.travelMakerSummaryArray, ...travelArray];
-      state.totalCount = action.payload.count;
+      const travelArray = action.payload.data.map((item) => ({
+        ...item,
+        tour_status_text: getTourStatusText(item.tour_status_id),
+        from: item.tour_status_id === 3 ? "CANCEL_MAKER" : "MAKER",
+      }));
+      state.travelMakerSummaryArray = [
+        ...state.travelMakerSummaryArray,
+        ...travelArray,
+      ];
+      state.totalCount = action.payload.count || 0;
     },
 
     setTravelApproverSummaryArray: (state, action) => {
-      const travelArray = action.payload.data.map((item) => ({ ...item, tour_status_text: getTourApproverStatusText(item.tour_status, item.apptype), from: 'CHECKER' }));
-      state.travelApproverSummaryArray = [...state.travelApproverSummaryArray, ...travelArray];
-      state.totalCount = action.payload.count;
+      const travelArray = action.payload.data.map((item) => ({
+        ...item,
+        tour_status_text: getTourApproverStatusText(item.tour_status, item.apptype),
+        from: "CHECKER",
+      }));
+      state.travelApproverSummaryArray = [
+        ...state.travelApproverSummaryArray,
+        ...travelArray,
+      ];
+      state.totalCount = action.payload.count || 0;
     },
 
     setTravelCancelMakerSummaryArray: (state, action) => {
-      const travelArray = action.payload.data.map((item) => ({ ...item, tour_status_text: item.tour_cancel_status, from: 'CANCEL_MAKER' }));
-      state.travelCancelMakerSummaryArray = [...state.travelCancelMakerSummaryArray, ...travelArray];
-      state.totalCount = action.payload.count;
+      const travelArray = action.payload.data.map((item) => ({
+        ...item,
+        tour_status_text: item.tour_cancel_status,
+        from: "CANCEL_MAKER",
+      }));
+      state.travelCancelMakerSummaryArray = [
+        ...state.travelCancelMakerSummaryArray,
+        ...travelArray,
+      ];
+      state.totalCount = action.payload.count || 0;
     },
 
     setTravelCancelApproverSummaryArray: (state, action) => {
-      const travelArray = action.payload.data.map((item) => ({ ...item, tour_status_text: item.tour_cancel_status, from: 'CANCEL_CHECKER' }));
-      state.travelCancelApproverSummaryArray = [...state.travelCancelApproverSummaryArray, ...travelArray];
-      state.totalCount = action.payload.count;
+      const travelArray = action.payload.data.map((item) => ({
+        ...item,
+        tour_status_text: item.tour_cancel_status,
+        from: "CANCEL_CHECKER",
+      }));
+      state.travelCancelApproverSummaryArray = [
+        ...state.travelCancelApproverSummaryArray,
+        ...travelArray,
+      ];
+      state.totalCount = action.payload.count || 0;
     },
 
-    clearTravelMakerSummaryArray: (state, action) => {
+    clearTravelMakerSummaryArray: (state) => {
       state.travelMakerSummaryArray = [];
     },
-    clearTravelApproverSummaryArray: (state, action) => {
+    clearTravelApproverSummaryArray: (state) => {
       state.travelApproverSummaryArray = [];
     },
-    clearTravelCancelMakerSummaryArray: (state, action) => {
+    clearTravelCancelMakerSummaryArray: (state) => {
       state.travelCancelMakerSummaryArray = [];
     },
-    clearTravelCancelApproverSummaryArray: (state, action) => {
+    clearTravelCancelApproverSummaryArray: (state) => {
       state.travelCancelApproverSummaryArray = [];
     },
     setAdminSummaryArray: (state, action) => {
-      const travelArray = action.payload.data.map((item) => ({ ...item, tour_status_text: getTourApproverStatusText(item.tour_status, item.apptype), from: 'ADMIN' }));
-      state.adminSummaryArray = [...state.adminSummaryArray, ...travelArray];
-      state.totalCount = action.payload.count;
+      const travelArray = action.payload.data.map((item) => ({
+        ...item,
+        tour_status_text: getTourApproverStatusText(item.tour_status, item.apptype),
+        from: "ADMIN",
+      }));
+      state.adminSummaryArray = [
+        ...state.adminSummaryArray,
+        ...travelArray,
+      ];
+      state.totalCount = action.payload.count || 0;
     },
-    clearAdminSummaryArray: (state, action) => {
+    clearAdminSummaryArray: (state) => {
       state.adminSummaryArray = [];
     },
   },
@@ -120,25 +153,15 @@ const TravelMaker = createSlice({
 
 export const {
   setTravelMakerSummaryArray,
-  updateCashFlowItem,
   clearTravelMakerSummaryArray,
-  setCashFlowDetails,
-  updateCashFlowDetails,
-  clearCashFlowDetails,
-  toggleCheckBox,
-  toggleCheckboxForAll,
-  receiptCount,
-  receiptSingleData,
-  clearReceiptSingleData,
-  setPaymentData,
-  setLibraryData,
-  clearTravelApproverSummaryArray,
   setTravelApproverSummaryArray,
+  clearTravelApproverSummaryArray,
   setTravelCancelMakerSummaryArray,
   clearTravelCancelMakerSummaryArray,
   setTravelCancelApproverSummaryArray,
   clearTravelCancelApproverSummaryArray,
-  clearAdminSummaryArray,
   setAdminSummaryArray,
+  clearAdminSummaryArray,
 } = TravelMaker.actions;
+
 export default TravelMaker.reducer;

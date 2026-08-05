@@ -34,7 +34,8 @@ const FilterModal = ({
   getRequirementsLabel,
   getBookingStatusLabel,
   getTravelStatusLabel,
-  isChecker
+  isChecker,
+  isTourApproval
 }) => {
   const dispatch = useDispatch();
   const isDark = useSelector(state => state.theme.isDark);
@@ -229,6 +230,12 @@ const FilterModal = ({
                 display={Platform.OS === "ios" ? "spinner" : "default"}
                 onChange={handleDateChange}
               />
+            )}
+
+  {isTourApproval && (
+              <>
+              {  renderPicker("Select Status", "status", statusOptions, localFilters.status, getStatusLabel)}
+              </>
             )}
 
             {isChecker && (
