@@ -1,3 +1,4 @@
+import React, { useState, useEffect, useCallback, useLayoutEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -5,47 +6,42 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Platform,
-
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import React, { useEffect, useState, useCallback } from "react";
-import { useLazyTravelApproveSummaryQuery } from "../../redux/rtk_query/apiSlice";
 import { useDispatch, useSelector } from "react-redux";
+import { MaterialIcons as Icon } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+
+import { useLazyTravelApproveSummaryQuery } from "../../redux/rtk_query/apiSlice";
 import {
   clearTravelApproverSummaryArray,
   setTravelApproverSummaryArray,
 } from "../../redux/slices/TravelMaker";
+import { setFilters, clearFilters } from "../../redux/slices/FilterSlice";
 import ToastMessage from "../../TaComponents/toast/ToastMessage";
 import TravelMakerSummaryCard from "../../TaComponents/cards/TravelMakerSummaryCard";
 import { RowList } from "../../TaComponents/flat_lists/RowList";
-import { getCustomColors } from "../../styles/CustomColors";
 import FilterModal from "../../TaComponents/models/FilterModel";
-import { setFilters, clearFilters } from "../../redux/slices/FilterSlice";
-import { MaterialIcons as Icon } from "@expo/vector-icons";
+import { getCustomColors } from "../../styles/CustomColors";
 import * as styles from "../../styles/StyleSheet";
-import { useFocusEffect } from "@react-navigation/native";
-import {
-  horizontalScale,
-  verticalScale,
-  moderateScale,
-} from "../../globalstyles/Metrics";
+import { moderateScale } from "../../globalstyles/Metrics";
+
 const TravelApproverSummaryScreen = ({ navigation }) => {
   const dispatch = useDispatch();
-  const isDark = useSelector(state => state.theme.isDark);
+  const isDark = useSelector((state) => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
   const globalStyles = styles.styles(isDark);
+
   const getRedux = useSelector(
     (state) => state.TravelMaker.travelApproverSummaryArray
   );
   const filters = useSelector((state) => state.travelFilter);
 
-  const [trigger, { isLoading, isFetching, isError, error, data }] =
-    useLazyTravelApproveSummaryQuery();
+  const [triggerSummary, { isFetching }] = useLazyTravelApproveSummaryQuery();
 
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreData, setHasMoreData] = useState(true);
-  const [filtersCleared, setFiltersCleared] = useState(false);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   const statusOptions = [
@@ -65,18 +61,15 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
         <Icon name="filter-list" size={28} color={CustomColors.white} />
       </TouchableOpacity>
     ),
-    [navigation, isDark]
+    [CustomColors.white]
   );
 
-  useFocusEffect(
-  useCallback(() => {
+  useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
-
       headerStyle: {
         backgroundColor: CustomColors.appThemeColor,
       },
-
       headerTitle: () => (
         <Text
           allowFontScaling={false}
@@ -90,59 +83,61 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
           Travel Approver Summary
         </Text>
       ),
-
       headerTintColor: CustomColors.textWhite,
       headerRight: HeaderRight,
     });
-  }, [navigation, HeaderRight, isDark])
-);
+  }, [navigation, HeaderRight, CustomColors, globalStyles]);
 
+  const loadData = useCallback(
+    async (pageNum, isInitial = false, activeFilters = filters) => {
+      if (!hasMoreData && !isInitial) return;
+      if (!isInitial) setIsLoadingMore(true);
 
-  const handleRefresh = async () => {
-    setHasMoreData(true);
-    setPage(1);
-    dispatch(clearTravelApproverSummaryArray());
-    await loadData(1, true);
-  };
+      const statusValue =
+        typeof activeFilters.status === "object"
+          ? activeFilters.status?.value
+          : activeFilters.status;
 
-  const loadData = async (pageNum, isInitial = false) => {
-    if (!hasMoreData && !isInitial) return;
-    if (!isInitial) setIsLoadingMore(true);
+      // Approver summary payload: Tour No, Requested Date, and Status Filter
+      const payload = {
+        page: pageNum,
+        tour_no: activeFilters.tourNO || "",
+        request_date: activeFilters.requestedDate || "",
+        type: "tour",
+        status: statusValue !== undefined && statusValue !== null && statusValue !== "" ? statusValue : 2,
+      };
 
-    const statusValue =
-      typeof filters.status === "object"
-        ? filters.status?.value
-        : filters.status;
+      try {
+        const result = await triggerSummary(payload).unwrap();
 
-    const payload = {
-      page: pageNum,
-      tour_no: filters.tourNO,
-      requestedDate: filters.requestedDate,
-      type: 'tour',
-      status: statusValue,
-    }
-    const result = await trigger(payload);
-
-    if (result?.data) {
-      if (result.data.data?.length > 0) {
-        dispatch(setTravelApproverSummaryArray({ data: result.data.data }));
-        setPage((prev) => prev + 1);
-      } else {
-        setHasMoreData(false);
+        if (result?.data?.length > 0) {
+          dispatch(setTravelApproverSummaryArray({ data: result.data }));
+          setPage(pageNum + 1);
+        } else {
+          setHasMoreData(false);
+        }
+      } catch (err) {
+        ToastMessage("Something went wrong loading summary.");
+      } finally {
+        if (!isInitial) setIsLoadingMore(false);
       }
-    } else if (result?.error) {
-      ToastMessage("Something went wrong");
-    }
+    },
+    [dispatch, filters, hasMoreData, triggerSummary]
+  );
 
-    if (!isInitial) setIsLoadingMore(false);
-  };
+  const handleRefresh = useCallback(
+    async (customFilters = filters) => {
+      setHasMoreData(true);
+      setPage(1);
+      dispatch(clearTravelApproverSummaryArray());
+      await loadData(1, true, customFilters);
+    },
+    [dispatch, loadData, filters]
+  );
 
   useFocusEffect(
-    React.useCallback(() => {
-      if (!filtersCleared) {
-        handleRefresh();
-        return () => { };
-      }
+    useCallback(() => {
+      handleRefresh(filters);
     }, [filters])
   );
 
@@ -151,41 +146,29 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
       dispatch(clearTravelApproverSummaryArray());
       dispatch(clearFilters());
     };
-  }, []);
-
-  useEffect(() => {
-    if (
-      filtersCleared &&
-      !filters?.tourNO &&
-      filters?.status === 2 &&
-      !filters?.requestedDate
-    ) {
-      handleRefresh();
-      setFiltersCleared(false);
-    }
-  }, [filters, filtersCleared]);
+  }, [dispatch]);
 
   const handleLoadMore = () => {
-    if (!isLoadingMore && hasMoreData) {
-      loadData(page);
+    if (!isLoadingMore && hasMoreData && !isFetching) {
+      loadData(page, false, filters);
     }
   };
 
   const handleCardPress = (itemData) => {
-    navigation.navigate("travel_maker_screen", {
+    navigation.navigate("travel_edit_screen", {
       tourDataParams: itemData,
-      from: itemData.from,
-      tour_id: itemData.tourid,
+      from: itemData?.from || "CHECKER",
+      tour_id: itemData?.tourid || itemData?.id,
     });
   };
 
-  const applyFilters = () => {
+  const applyFilters = (appliedFilters) => {
+    dispatch(setFilters(appliedFilters));
     setFilterModalVisible(false);
   };
 
   const clearAllFilters = () => {
     dispatch(clearFilters());
-    setFiltersCleared(true);
     setFilterModalVisible(false);
   };
 
@@ -198,7 +181,9 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
     return (
       <View style={globalStyles.loadingContainer}>
         <ActivityIndicator size="large" color={CustomColors.appThemeColor} />
-        <Text allowFontScaling={false} style={globalStyles.loadingText}>Please wait...</Text>
+        <Text allowFontScaling={false} style={globalStyles.loadingText}>
+          Please wait...
+        </Text>
       </View>
     );
   }
@@ -215,7 +200,10 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
         clearAllFilters={clearAllFilters}
         statusOptions={statusOptions}
         getStatusLabel={getStatusLabel}
-        title={"Travel Filter"}
+        isTourApproval={true}
+        isChecker={false}
+        isAdmin={false}
+        title={"Travel Approver Filter"}
       />
 
       {getRedux?.length > 0 ? (
@@ -225,7 +213,7 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
           onLoadMore={handleLoadMore}
           isLoadingMore={isLoadingMore}
           hasMoreData={hasMoreData}
-          onRefresh={handleRefresh}
+          onRefresh={() => handleRefresh(filters)}
           refreshing={isFetching && page === 1}
           onPress={handleCardPress}
         />
