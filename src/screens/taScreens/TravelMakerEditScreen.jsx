@@ -27,6 +27,7 @@ import { moderateScale, verticalScale, horizontalScale } from "../../styles/Metr
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import ToastMessage from "../../TaComponents/toast/ToastMessage";
 import FileDisplaySection from "../../TaComponents/cards/FileDisplaySection";
@@ -224,11 +225,32 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       marginLeft: horizontalScale(6),
     },
     pickFileBtn: {
+      flex: 1,
+      flexDirection: "row",
       backgroundColor: CustomColors.appThemeColor,
-      padding: moderateScale(10),
-      borderRadius: moderateScale(6),
+      paddingVertical: verticalScale(10),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(8),
       alignItems: "center",
-      marginVertical: verticalScale(10),
+      justifyContent: "center",
+      marginRight: horizontalScale(6),
+    },
+    cameraBtn: {
+      flex: 1,
+      flexDirection: "row",
+      backgroundColor: "#2e7d32",
+      paddingVertical: verticalScale(10),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(8),
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: horizontalScale(6),
+    },
+    btnText: {
+      color: CustomColors.white,
+      fontFamily: Fonts.bold,
+      fontSize: moderateScale(13),
+      marginLeft: horizontalScale(6),
     },
   });
 
@@ -277,8 +299,6 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       .then((res) => dispatch(setApprovalFlow(res?.data || res)))
       .catch(() => {});
 
-    // 🔑 FIX FOR 404 WITHOUT CHANGING apiSlice:
-    // Direct fetch to match URL path format: /taserv/fetch_documents/4796
     const fetchDocumentsDirect = async () => {
       try {
         const response = await fetch(
@@ -320,7 +340,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
   useEffect(() => {
     if (tourData) {
       const tourStatus = tourData.tour_status;
-      const canEdit = isMaker && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus !== "PENDING";
+      const canEdit = isMaker && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus == "PENDING";
       setIsEditable(canEdit);
 
       const parseDateString = (dateString) => {
@@ -337,21 +357,18 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       const startDateISO = parseDateString(tourData.startdate)?.toISOString();
       const endDateISO = parseDateString(tourData.enddate)?.toISOString();
 
-      // Permitted By Normalization
       const permittedByNormalized = normalizePerson(tourData.permitted_by_data) || {
         id: tourData.permittedby_id,
         code: tourData.permittedby_code,
         full_name: tourData.permittedby,
       };
 
-      // Approver Normalization
       const approverNormalized = normalizePerson(tourData.approver_data) || {
         id: tourData.approver_branch_data?.id,
         code: tourData.approver_branch_data?.code,
         full_name: tourData.approver_branch_data?.full_name,
       };
 
-      // Branch Normalization
       const branchNormalized = normalizeBranch(tourData.branch_data_maker) || {
         id: tourData.empbranchgid,
         code: tourData.branch_code,
@@ -431,6 +448,33 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       setFiles((prev) => [...prev, ...selectedFiles]);
     } catch (err) {
       ToastMessage("Failed to pick files.");
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Camera access is needed.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        const asset = result.assets[0];
+        const newFile = {
+          uri: asset.uri,
+          name: asset.fileName || `camera_${Date.now()}.jpg`,
+          type: asset.mimeType || "image/jpeg",
+        };
+        setFiles((prev) => [...prev, newFile]);
+      }
+    } catch (e) {
+      ToastMessage("Failed to launch camera.");
     }
   };
 
@@ -604,7 +648,6 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: CustomColors.appScreenColor }}>
         <Formik enableReinitialize initialValues={travelForm} onSubmit={handleSubmit}>
           {({ values, handleChange, handleSubmit: formikSubmit, setFieldValue }) => (
-            
             <>
               <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" ref={scrollViewRef}>
 
@@ -752,16 +795,45 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   ))}
                 </View>
 
+                {/* 🔑 FILE UPLOAD & ATTACHMENT SECTION (UPSIDE OF TO APPROVER) */}
                 <View style={styles.sectionCard}>
-                  <Text allowFontScaling={false} style={styles.sectionHeader}>Attachments</Text>
-                  <TouchableOpacity style={modalstyles.attachmentBtn} onPress={() => setIsAttachmentModalVisible(true)}>
-                    <Ionicons name="attach-outline" size={20} color={CustomColors.white} />
-                    <Text allowFontScaling={false} style={modalstyles.attachmentBtnText}>
-                      Attachment ({totalAttachmentCount})
-                    </Text>
-                  </TouchableOpacity>
+                  <Text allowFontScaling={false} style={styles.sectionHeader}>Upload Attachments</Text>
+                  
+                  {isEditable && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: verticalScale(10) }}>
+                      <TouchableOpacity style={modalstyles.pickFileBtn} onPress={handlePickLocalFiles}>
+                        <Ionicons name="document-attach-outline" size={20} color={CustomColors.white} />
+                        <Text style={modalstyles.btnText}> Pick Files</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={modalstyles.cameraBtn} onPress={openCamera}>
+                        <Ionicons name="camera-outline" size={20} color={CustomColors.white} />
+                        <Text style={modalstyles.btnText}> Camera</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Local Selected Files Display */}
+                  {files.length > 0 && (
+                    <FileDisplaySection
+                      title="Selected Files"
+                      files={files}
+                      removeFile={handleRemoveLocalFile}
+                      isEditable={isEditable}
+                    />
+                  )}
+
+                  {/* Button to Trigger Full Attachments Modal */}
+                {/* Replace paperclip-outline with attach-outline */}
+<TouchableOpacity style={modalstyles.attachmentBtn} onPress={() => setIsAttachmentModalVisible(true)}>
+  <Ionicons name="attach-outline" size={20} color={CustomColors.white} />
+  <Text allowFontScaling={false} style={modalstyles.attachmentBtnText}>
+    View All Attachments ({totalAttachmentCount})
+  </Text>
+</TouchableOpacity>
                 </View>
 
+                {/* To Approver Section */}
                 <View style={styles.sectionCard}>
                   <Text allowFontScaling={false} style={styles.sectionHeader}>To Approver</Text>
 
@@ -879,6 +951,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
         </Formik>
       </SafeAreaView>
 
+      {/* Attachments Popup Modal */}
       <Modal animationType="slide" transparent={true} visible={isAttachmentModalVisible} onRequestClose={() => setIsAttachmentModalVisible(false)}>
         <View style={modalstyles.modalOverlay}>
           <View style={modalstyles.modalContent}>
@@ -888,12 +961,6 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
             <Text allowFontScaling={false} style={modalstyles.modalTitle}>Attachments</Text>
 
             <ScrollView>
-              {isEditable && (
-                <TouchableOpacity style={modalstyles.pickFileBtn} onPress={handlePickLocalFiles}>
-                  <Text style={{ color: CustomColors.white, fontFamily: Fonts.bold }}>Attach New File</Text>
-                </TouchableOpacity>
-              )}
-
               {files.length > 0 && (
                 <FileDisplaySection
                   title="Newly Attached Files"
@@ -903,10 +970,10 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                 />
               )}
 
-              {travelForm.DocumentData?.tour_maker?.length > 0 ? (
+              {(travelForm.DocumentData?.tour_maker || travelForm.DocumentData?.data)?.length > 0 ? (
                 <FileDisplaySection
                   title="Tour Maker Attached Files"
-                  files={travelForm.DocumentData.tour_maker}
+                  files={travelForm.DocumentData?.tour_maker || travelForm.DocumentData?.data}
                   handleWebViewFile={handleWebViewFile}
                   isEditable={false}
                 />
@@ -927,6 +994,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
         </View>
       </Modal>
 
+      {/* Approval View Modal */}
       <Modal animationType="slide" transparent={true} visible={isApprovalModalVisible} onRequestClose={() => setIsApprovalModalVisible(false)}>
         <View style={modalstyles.modalOverlay}>
           <View style={modalstyles.modalContent}>
