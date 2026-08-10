@@ -1234,7 +1234,7 @@ console.log("Submit Response:", response);
                 </View>
 
                 {/* Approver Remarks Section */}
-                {(from === "CHECKER" && isChecker) && (
+                {(from === "CHECKER") || (from === "CANCEL_MAKER") ? (
                   <View style={styles.sectionCard}>
                     <Text allowFontScaling={false} style={styles.sectionHeader}>
                       {isChecker ? "Approver Remarks" : "Cancel Remarks"}
@@ -1250,7 +1250,7 @@ console.log("Submit Response:", response);
                       allowFontScaling={false}
                     />
                   </View>
-                )}
+                ): null}
 
                 <View style={{ height: 80 }} />
               </ScrollView>
