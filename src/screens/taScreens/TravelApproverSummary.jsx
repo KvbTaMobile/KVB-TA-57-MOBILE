@@ -157,7 +157,7 @@ const TravelApproverSummaryScreen = ({ navigation }) => {
   const handleCardPress = (itemData) => {
     navigation.navigate("travel_edit_screen", {
       tourDataParams: itemData,
-      from: itemData?.from || "CHECKER",
+      from: "CHECKER",
       tour_id: itemData?.tourid || itemData?.id,
     });
   };
