@@ -1234,7 +1234,7 @@ console.log("Submit Response:", response);
                 </View>
 
                 {/* Approver Remarks Section */}
-                {(from === "CHECKER" && isChecker) || (from === "CANCEL_MAKER" && isCancelMaker) && (
+                {(from === "CHECKER" && isChecker) && (
                   <View style={styles.sectionCard}>
                     <Text allowFontScaling={false} style={styles.sectionHeader}>
                       {isChecker ? "Approver Remarks" : "Cancel Remarks"}
