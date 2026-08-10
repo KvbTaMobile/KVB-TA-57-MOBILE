@@ -243,7 +243,7 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
   const handleCardPress = (itemData) => {
     navigation.navigate("travel_edit_screen", {
       tourDataParams: itemData,
-      from: itemData.from || "MAKER",
+      from: "MAKER",
       tour_id: itemData.id || itemData.requestno,
       onbehalf: selectedEmployee?.employeegid || selectedEmployee?.id,
       onbehalfname: selectedEmployee?.employee_name || selectedEmployee?.full_name,

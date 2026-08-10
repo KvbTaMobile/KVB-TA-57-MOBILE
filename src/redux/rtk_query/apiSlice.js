@@ -158,15 +158,12 @@ export const apiSlice = createApi({
         };
       },
     }),
-    documentDataGet: builder.query({
-      query: (params_data) => {
-        const params = new URLSearchParams(params_data);
-        return {
-          url: `${Environment.taServiceUrl
-            }/taserv/fetch_documents?${params.toString()}`,
-        };
-      },
-    }),
+documentDataGet: builder.query({
+  query: (id) => ({
+    url: `${Environment.taServiceUrl}/taserv/fetch_documents/${id}`,
+  }),
+}),
+
     tourApprove: builder.mutation({
       query: ({ data }) => {
         //console.log("PAYLOAD->>>", data);
@@ -1271,6 +1268,25 @@ getAdvanceMakerSummary: builder.query({
     method: "GET",
   }),
 }),
+getAdvanceEditDetails: builder.query({
+  query: ({ tour_no }) => ({
+    url: `${Environment.taServiceUrl}/taserv/touradvance/${tour_no}`,
+    method: "GET",
+  }),
+}),
+getAdvancemakerSummary: builder.query({
+  query: ({ page = 1, val = "" }) => ({
+    url: `${Environment.taServiceUrl}/taserv/advance_summary?page=${page}${val}`,
+    method: "GET",
+  }),
+}),
+getTourBsCcFetch: builder.query({
+  query: ({ reason }) => ({
+    url: `${Environment.taServiceUrl}/taserv/tour_bscc_fetch`,
+    method: "GET",
+    params: { reason },
+  }),
+}),
 getAdvanceApproverSummary: builder.query({
   query: ({ status = 2, page = 1, val = "" }) => ({
     url: `${Environment.taServiceUrl}/taserv/tourapprove/advance?status=${status}&page=${page}${val}`,
@@ -1456,7 +1472,10 @@ export const {
   useLazyConfigurationSearchQuery,
 
 useLazyGetAdvanceMakerSummaryQuery,
+useLazyGetAdvancemakerSummaryQuery,
 useLazyGetAdvanceApproverSummaryQuery,
+useLazyGetAdvanceEditDetailsQuery,
+useLazyGetTourBsCcFetchQuery,
 useLazyGetCancelMakerSummaryQuery,
 useLazyGetCancelApproverSummaryQuery,
 useLazyGetAssignApproverSummaryQuery,

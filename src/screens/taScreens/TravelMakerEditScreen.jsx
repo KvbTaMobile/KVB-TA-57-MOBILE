@@ -43,6 +43,7 @@ import {
   useTourForwardMutation,
   useTourCancelMutation,
   apiSlice,
+  useLazyTourReasonListQuery
 } from "../../redux/rtk_query/apiSlice";
 import {
   updateField,
@@ -123,6 +124,7 @@ const Id = route?.params?.id
 console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   const isMaker = from === "MAKER";
   const [isChecker, setIsChecker] = useState(from === "CHECKER");
+  console.log("isMaker:", isMaker, "isChecker:", isChecker, "from:", from);
   const [isCancelMaker, setIsCancelMaker] = useState(from === "CANCEL_MAKER");
 
   const dispatch = useDispatch();
@@ -148,7 +150,13 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   const [branchList, setBranchList] = useState([]);
   const [isApproverPickerVisible, setIsApproverPickerVisible] = useState(false);
   const [approverList, setApproverList] = useState([]);
+// Replace your openReasonPicker and reason states with this:
+  const [isReasonPickerVisible, setIsReasonPickerVisible] = useState(false);
+  const [reasonList, setReasonList] = useState([]);
+  
+  const [triggerReason, { isFetching: isReasonLoading }] = useLazyTourReasonListQuery();
 
+ 
   // RTK Query hooks
   const [triggerApprovalFlow] = useLazyGetApprovalFlowQuery();
   const [triggerTourDataGet, { isLoading: isLoadingTourData, data: tourData }] =
@@ -390,7 +398,7 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
         setIsChecker(true);
       }
 
-      const canEdit = isMaker && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus !== "PENDING";
+      const canEdit =  from === "MAKER"  && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus === "PENDING" && tourStatus !== "RETURNED" && tourStatus !== "CANCELLED";
       setIsEditable(canEdit);
 
       const parseDateString = (dateString) => {
@@ -477,7 +485,26 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
       setBranchList(res?.data || []);
     } catch (e) {}
   };
-
+ const openReasonPicker = async () => {
+    if (!isEditable) return;
+    setIsReasonPickerVisible(true);
+    try {
+      const res = await triggerReason({ name: "", page: 1 }).unwrap();
+      setReasonList(res?.data || res || []);
+    } catch (e) {
+      ToastMessage("Failed to fetch tour reasons.");
+    }
+  };
+   const handleSearchReason = useCallback((query) => {
+    if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    debounceTimeout.current = setTimeout(() => {
+      setCurrentReasonSearchQuery(query);
+      setReasonPage(1);
+      setHasMoreReasons(true);
+      dispatch(setReasonList({ data: [] }));
+      triggerReason({ name: query, page: 1 });
+    }, 500);
+  }, [triggerReason, dispatch]);
   const handleOpenApproverPicker = async (branchId) => {
     if (!isEditable && !isChecker) return;
     if (!isValidId(branchId)) {
@@ -556,54 +583,123 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   };
 
 // Approver Action Handlers
+
 const handleApprove = async (values) => {
-console.log("Approver VALUES:", values.id);
-  if (!values.approverRemarks) {
+  console.log("Approver VALUES:", values);
+
+  if (!values.approverRemarks?.trim()) {
     ToastMessage("Please enter Remarks");
     return;
   }
+
   try {
     setIsSubmitting(true);
-    
-    // 🔑 Wrap payload in the structure expected by the backend
+
+    // Get the current approval record
+    const currentApproval =
+      tourData?.approve?.find(
+        (item) =>
+          Number(item.applevel) === Number(tourData?.latest_applevel)
+      ) ||
+      tourData?.approve?.[tourData?.approve?.length - 1];
+
+    // Approval record ID
+    const approvalId = currentApproval?.id;
+
+    // Current approver employee ID
+    const approvedById =
+      tourData?.approver_data?.id ||
+      currentApproval?.approvedby_id ||
+      values.approval?.id;
+
+    // Tour ID
+    const tourId = tourData?.id || tour_id;
+
+    if (!isValidId(tourId)) {
+      ToastMessage("Tour ID not available.");
+      return;
+    }
+
+    if (!isValidId(approvalId)) {
+      ToastMessage("Approval ID not available.");
+      console.log("Approval record not found:", tourData?.approve);
+      return;
+    }
+
+    if (!isValidId(approvedById)) {
+      ToastMessage("Approver employee ID not available.");
+      console.log("Approver ID not found:", {
+        approver_data: tourData?.approver_data,
+        currentApproval,
+        valuesApproval: values.approval,
+      });
+      return;
+    }
+
     const payload = {
-      id: Id,
-      tourgid: tourData?.tourid || tour_id,
+      id: Number(approvalId),
+      tourgid: Number(tourId),
       apptype: "tour",
-      applevel: tourData?.latest_applevel || 1,
-      appcomment: values.approverRemarks,
+      applevel: Number(
+        tourData?.latest_applevel ||
+        currentApproval?.applevel ||
+        1
+      ),
+      appcomment: values.approverRemarks.trim(),
+      approvedby: Number(approvedById),
       status: "3",
     };
-console.log("Approval Payload:", payload);
-    // If your backend endpoint requires multipart/form-data for approvals:
+
+    console.log("================================");
+    console.log("APPROVE PAYLOAD:", payload);
+    console.log("Approval ID:", approvalId);
+    console.log("Tour ID:", tourId);
+    console.log("Approved By:", approvedById);
+    console.log("================================");
+
     const response = await uploadMultipart({
       url: `${Environment.taServiceUrl}/taserv/tourapprove`,
+
       data: payload,
+
       files: (files || []).map((file, index) => ({
         uri: file.uri,
         name: file.name || `file_${index}.jpg`,
         type: file.type || file.mimeType || "image/jpeg",
         size: file.size || 0,
       })),
+
       headers: {
         Authorization: `Token ${authToken}`,
-        ...(csrfToken && { "X-CSRFToken": csrfToken }),
-        ...(csrfCookie && { "X-CSRFCookie": csrfCookie }),
+        ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+        ...(csrfCookie ? { "X-CSRFCookie": csrfCookie } : {}),
       },
     });
-console.log("Approval Response:", response);
-    if (response?.status === "success" || response?.message === "Success") {
+
+    console.log("Approval Response:", response);
+
+    if (
+      response?.status === "success" ||
+      response?.message === "Success"
+    ) {
       ToastMessage("Tour Approved Successfully");
       navigation.goBack();
     } else {
-      ToastMessage(response?.description || response?.message || "Approval failed.");
+      ToastMessage(
+        response?.description ||
+        response?.message ||
+        "Approval failed."
+      );
     }
-  } catch (e) {
+  } catch (error) {
+    console.log("Approve Error:", error);
     ToastMessage("Approval failed.");
   } finally {
     setIsSubmitting(false);
   }
 };
+
+
 
 const handleReject = async (values) => {
   if (!values.approverRemarks) {
@@ -791,14 +887,14 @@ const handleReturn = async (values) => {
           purposeofvisit: String(item.purposeofvisit).trim(),
         })),
       };
-
+console.log("Submit Data:", data);
       const uploadFiles = (files || []).map((file, index) => ({
         uri: file.uri,
         name: file.name || `file_${index}.jpg`,
         type: file.type || file.mimeType || "image/jpeg",
         size: file.size || 0,
       }));
-
+console.log("Upload Files:", uploadFiles);
       const response = await uploadMultipart({
         url: `${Environment.taServiceUrl}/taserv/tour`,
         data,
@@ -809,7 +905,7 @@ const handleReturn = async (values) => {
           ...(csrfCookie ? { "X-CSRFCookie": csrfCookie } : {}),
         },
       });
-
+console.log("Submit Response:", response);
       if (response?.status === "success" || response?.message === "Success") {
         ToastMessage("Tour Updated Successfully");
         navigation.goBack();
@@ -924,10 +1020,25 @@ const handleReturn = async (values) => {
                   <TextInput style={styles.input} value={values.empGrade} editable={false} allowFontScaling={false} />
                 </View>
 
-                <View style={styles.sectionCard}>
-                  <Text allowFontScaling={false} style={styles.sectionHeader}>Tour Details</Text>
-                  <Text allowFontScaling={false} style={styles.label}>Tour Reason</Text>
-                  <TextInput style={styles.input} value={values.reason?.name} editable={false} allowFontScaling={false} />
+              <View style={styles.sectionCard}>
+  <Text allowFontScaling={false} style={styles.sectionHeader}>Tour Details</Text>
+  
+  <Text allowFontScaling={false} style={styles.label}>
+    Tour Reason <Text allowFontScaling={false} style={styles.mandatory}>*</Text>
+  </Text>
+  
+  <TouchableOpacity 
+    onPress={openReasonPicker} 
+    style={[styles.input, !isEditable && { opacity: 0.6 }]} 
+    disabled={!isEditable}
+  >
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <Text allowFontScaling={false} style={{ color: values.reason?.name ? CustomColors.textDark : CustomColors.textGray }}>
+        {values.reason?.name ? String(values.reason.name) : "Select Reason"}
+      </Text>
+      <Ionicons name="chevron-down" size={20} color={CustomColors.textGray} />
+    </View>
+  </TouchableOpacity>
 
                   <View style={styles.dateRow}>
                     <TouchableOpacity
@@ -1123,7 +1234,7 @@ const handleReturn = async (values) => {
                 </View>
 
                 {/* Approver Remarks Section */}
-                {(isChecker || isCancelMaker) && (
+                {(from === "CHECKER" && isChecker) || (from === "CANCEL_MAKER" && isCancelMaker) && (
                   <View style={styles.sectionCard}>
                     <Text allowFontScaling={false} style={styles.sectionHeader}>
                       {isChecker ? "Approver Remarks" : "Cancel Remarks"}
@@ -1146,7 +1257,7 @@ const handleReturn = async (values) => {
 
               {/* Action Buttons Container */}
               <View style={styles.submitButtonContainer}>
-                {isMaker && !isChecker && (
+                {from === "MAKER" && isMaker && (
                   <TouchableOpacity style={styles.submitButtonFullWidth} onPress={formikSubmit} disabled={isSubmitting || !isEditable}>
                     {isSubmitting ? (
                       <ActivityIndicator color={CustomColors.textWhite} />
@@ -1157,7 +1268,9 @@ const handleReturn = async (values) => {
                 )}
 
                 {/* 🔑 Approver Action Buttons Grid (Approve, Reject, Return, Forward) */}
-                {isChecker && (
+                {console.log("FROM:", from, "IS CHECKER:", isChecker,"condition:", from === "CHECKER" && isChecker)}
+                {from ==="CHECKER"&&isChecker && (
+                  
                   <View style={modalstyles.checkerBtnContainer}>
                     <TouchableOpacity
                       style={[modalstyles.actionBtn, modalstyles.approveBtn]}
@@ -1213,7 +1326,22 @@ const handleReturn = async (values) => {
                   onChange={(evt, date) => handleConfirmDate(evt, date, setFieldValue, values)}
                 />
               )}
-
+<CustomActionSheetPicker
+  pickerStatus={isReasonPickerVisible}
+  setPickerStatus={setIsReasonPickerVisible}
+  title="Select Tour Reason"
+  optionsData={reasonList.map((reason) => ({
+    label: reason.name,
+    value: reason.id,
+    raw: reason,
+  }))}
+  RenderItem={renderDropdownItem}
+  onPress={(selected) => {
+    setFieldValue("reason", { id: selected.raw.id, name: selected.raw.name });
+    setIsReasonPickerVisible(false);
+  }}
+  isLoading={isReasonLoading}
+/>
               <CustomActionSheetPicker
                 pickerStatus={isPermittedByPickerVisible}
                 setPickerStatus={setIsPermittedByPickerVisible}
