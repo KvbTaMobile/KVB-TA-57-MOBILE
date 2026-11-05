@@ -24,6 +24,7 @@ const initialLocalConveyanceState = {
     datePickerValue: new Date().toISOString(), // Value passed to the date picker, defaults to current date in ISO string
     hasUnsavedChanges: false, // Flag to indicate if there are unsaved changes
     expandedItems: {}, // UI state for which expense items are expanded in the list
+    deletedItemIds: [], // Stores deleted item IDs
 };
 const ExpenseSlice = createSlice({
     name: 'expense',
@@ -216,14 +217,17 @@ const ExpenseSlice = createSlice({
             const newId = `temp-${Date.now()}`; // Generate a unique temporary ID
             const newEmptyItem = {
                 id: newId,
-                subCategory: '',
-                date: '', // Default to empty string as requested
+                modeOfTravel: 'Road',
+                subCategory: 'Bus',
+                center: '',
                 fromPlace: '',
                 toPlace: '',
                 distance: '',
+                onwardReturn: '1',
                 billNumber: '',
                 remarks: '',
                 claimAmount: '',
+                eligibleamount: '0',
                 isNew: true, // Flag to identify newly added items
             };
             // Add the new item directly to the main 'expenses' array
@@ -292,8 +296,13 @@ const ExpenseSlice = createSlice({
         },
 
         resetLocalConveyanceState: (state) => {
-
-            Object.assign(state.localConveyance, initialLocalConveyanceState);
+            state.localConveyance = {
+                ...initialLocalConveyanceState,
+                expenses: [],
+                editedItemData: {},
+                expandedItems: {},
+                deletedItemIds: [],
+            };
         },
         setAssociatedExpenses: (state, action) => {
             state.associatedExpenses = action.payload;

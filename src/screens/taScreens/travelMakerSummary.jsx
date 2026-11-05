@@ -17,6 +17,13 @@ import TravelMakerSummaryCard from "../../TaComponents/cards/TravelMakerSummaryC
 import { RowList } from "../../TaComponents/flat_lists/RowList";
 import FilterModal from "../../TaComponents/models/FilterModel";
 import { setFilters, clearFilters } from "../../redux/slices/FilterSlice";
+import SelfOrOnBehalfModal from "../../TaComponents/models/SelfOrOnBehalfModal";
+import {
+  setMode,
+  setSelectedBranch,
+  setSelectedEmployee,
+  resetSelfOrOnBehalf,
+} from "../../redux/slices/SelfOrOnBehalfSlice";
 import { styles } from "../../styles/StyleSheet";
 import { useFocusEffect } from "@react-navigation/native";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -28,13 +35,53 @@ import {
 import { getCustomColors } from "../../styles/CustomColors";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+const MONTH_NAMES_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
 // Date Formatter matching Angular "dd-MMM-yyyy" (e.g., 01-Aug-2026)
 const formatDateForFilter = (dateString) => {
   if (!dateString) return "";
+  const str = String(dateString).trim();
+  const parts = str.split("-");
+
+  // If already DD-MMM-YYYY (e.g. 03-Sep-2026 or 03-sep-2026)
+  if (parts.length === 3 && isNaN(Number(parts[1]))) {
+    const day = parts[0].padStart(2, "0");
+    const mStr = parts[1].toLowerCase();
+    const months = {
+      jan: "Jan", feb: "Feb", mar: "Mar", apr: "Apr", may: "May", jun: "Jun",
+      jul: "Jul", aug: "Aug", sep: "Sep", oct: "Oct", nov: "Nov", dec: "Dec"
+    };
+    const month = months[mStr] || (parts[1].charAt(0).toUpperCase() + parts[1].slice(1).toLowerCase());
+    return `${day}-${month}-${parts[2]}`;
+  }
+
+  // If DD-MM-YYYY (e.g. 03-09-2026)
+  if (parts.length === 3 && parts[0].length <= 2 && parts[2].length === 4) {
+    const day = parts[0].padStart(2, "0");
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const year = parts[2];
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day}-${MONTH_NAMES_SHORT[monthIdx]}-${year}`;
+    }
+  }
+
+  // If YYYY-MM-DD (e.g. 2026-09-03)
+  if (parts.length === 3 && parts[0].length === 4) {
+    const year = parts[0];
+    const monthIdx = parseInt(parts[1], 10) - 1;
+    const day = parts[2].padStart(2, "0");
+    if (monthIdx >= 0 && monthIdx < 12) {
+      return `${day}-${MONTH_NAMES_SHORT[monthIdx]}-${year}`;
+    }
+  }
+
   const d = new Date(dateString);
-  if (isNaN(d.getTime())) return dateString;
+  if (isNaN(d.getTime())) return str;
   const day = d.getDate()?.toString().padStart(2, "0");
-  const month = d.toLocaleString("default", { month: "short" });
+  const month = MONTH_NAMES_SHORT[d.getMonth()];
   const year = d.getFullYear();
   return `${day}-${month}-${year}`;
 };
@@ -45,6 +92,12 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
     (state) => state.TravelMaker.travelMakerSummaryArray
   );
   const filters = useSelector((state) => state.travelFilter);
+  const filtersRef = useRef(filters);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
+
   const { mode, selectedEmployee } = useSelector(
     (state) => state.selfOrOnBehalf
   );
@@ -60,7 +113,10 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
   const [page, setPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMoreData, setHasMoreData] = useState(true);
+  const hasMoreRef = useRef(true);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [isSelfModalVisible, setIsSelfModalVisible] = useState(true);
+  const firstLoadRef = useRef(true);
 
   // Ref to guard against concurrent duplicate API requests
   const isFetchingRef = useRef(false);
@@ -78,30 +134,54 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
       marginLeft: horizontalScale(15),
     },
     onBehalfContainer: {
-      backgroundColor: CustomColors.liteBlue || "#E8F0FE",
+      backgroundColor: isDark ? "#1e293b" : (CustomColors.liteBlue || "#E8F0FE"),
       paddingVertical: verticalScale(10),
       paddingHorizontal: horizontalScale(15),
       borderBottomWidth: 1,
       borderBottomColor: CustomColors.borderColor || "#D1D5DB",
     },
-    onBehalfText: {
-      fontSize: moderateScale(16),
-      color: CustomColors.darkGray || "#374151",
-      fontWeight: "500",
+    onBehalfRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    onBehalfTextWrap: {
+      flex: 1,
+      marginHorizontal: horizontalScale(8),
+    },
+    onBehalfSubText: {
+      fontSize: moderateScale(11),
+      color: CustomColors.darkGray || "#64748b",
+      fontWeight: "600",
     },
     onBehalfEmployeeName: {
       fontWeight: "bold",
       color: CustomColors.primaryBlue || "#1D4ED8",
-      fontSize: moderateScale(16),
+      fontSize: moderateScale(14),
+      marginTop: verticalScale(2),
     },
   });
 
   const HeaderRight = useCallback(
     () => (
       <View style={screenStyles.headerRightContainer}>
+        {/* Switch Mode Button */}
+        <TouchableOpacity
+          onPress={() => setIsSelfModalVisible(true)}
+          style={screenStyles.headerButton}
+          activeOpacity={0.7}
+        >
+          <MaterialIcons
+            name={mode === "onbehalf" ? "people" : "person"}
+            size={24}
+            color={CustomColors.white}
+          />
+        </TouchableOpacity>
+
+        {/* Filter Button */}
         <TouchableOpacity
           onPress={() => setFilterModalVisible(true)}
           style={screenStyles.headerButton}
+          activeOpacity={0.7}
         >
           <MaterialIcons
             name="filter-list"
@@ -109,17 +189,20 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
             color={CustomColors.white}
           />
         </TouchableOpacity>
+
+        {/* Add Tour Button */}
         {isMaker && (
           <TouchableOpacity
             onPress={() => handleCreateTour()}
             style={screenStyles.headerButton}
+            activeOpacity={0.7}
           >
             <MaterialIcons name="add" size={28} color={CustomColors.white} />
           </TouchableOpacity>
         )}
       </View>
     ),
-    [navigation, isDark, CustomColors, selectedEmployee, isMaker]
+    [navigation, isDark, CustomColors, selectedEmployee, isMaker, mode]
   );
 
   useFocusEffect(
@@ -148,82 +231,137 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
     }, [navigation, isDark, HeaderRight, CustomColors, globalStyles])
   );
 
-  const loadData = async (pageNum, isInitial = false) => {
-    if (isFetchingRef.current) return;
-    if (!hasMoreData && !isInitial) return;
+  const loadData = useCallback(
+    async (pageNum, isInitial = false, activeFilters) => {
+      if (isFetchingRef.current) return;
+      if (!hasMoreRef.current && !isInitial) return;
 
-    isFetchingRef.current = true;
-    if (!isInitial) setIsLoadingMore(true);
+      isFetchingRef.current = true;
+      if (!isInitial) setIsLoadingMore(true);
 
-    const payload = {
-      page: pageNum,
-    };
+      const payload = {
+        page: pageNum,
+      };
 
-    // Extract search query values
-    const tourNoVal = filters?.tourNO || filters?.tour_no;
-    const dateVal = filters?.requestedDate || filters?.request_date;
+      // Extract search query values from activeFilters (or fallback to ref)
+      const currentFilters = activeFilters !== undefined ? activeFilters : filtersRef.current || {};
+      const tourNoVal = currentFilters?.tourNO || currentFilters?.tour_no;
+      const dateVal = currentFilters?.requestedDate || currentFilters?.request_date;
 
-    if (tourNoVal && String(tourNoVal).trim() !== "") {
-      payload.tour_no = String(tourNoVal).trim();
-    }
-    if (dateVal) {
-      payload.request_date = formatDateForFilter(dateVal);
-    }
-
-    if (mode === "onbehalf" || selectedEmployee) {
-      const onBehalfId = selectedEmployee?.employeegid || selectedEmployee?.id;
-      if (onBehalfId) {
-        payload.onbehalf = onBehalfId;
+      if (tourNoVal && String(tourNoVal).trim() !== "") {
+        payload.tour_no = String(tourNoVal).trim().toUpperCase();
       }
-    }
+      if (dateVal) {
+        payload.request_date = formatDateForFilter(dateVal);
+      }
 
-    try {
-      const result = await trigger(payload).unwrap();
+      // Condition-wise: Self vs Onbehalf (supports immediate override from modal submit)
+      const targetMode = currentFilters?.overrideMode !== undefined ? currentFilters.overrideMode : mode;
+      const targetEmp = currentFilters?.overrideEmployee !== undefined ? currentFilters.overrideEmployee : selectedEmployee;
 
-      const summaryList = result?.data || [];
-      const hasNextPage = result?.pagination?.has_next ?? false;
+      if (targetMode === "onbehalf" && targetEmp) {
+        const onBehalfId = targetEmp?.employeegid || targetEmp?.id;
+        if (onBehalfId) {
+          payload.onbehalf = onBehalfId;
+        }
+      }
 
-      if (Array.isArray(summaryList) && summaryList.length > 0) {
+      try {
+        const result = await trigger(payload).unwrap();
+
+        const summaryList = result?.data || [];
+        const hasNextPage = result?.pagination?.has_next ?? false;
+
+        console.log(
+          "TRAVEL MAKER SUMMARY REFRESH:",
+          JSON.stringify({
+            page: pageNum,
+            count: summaryList.length,
+            hasNextPage,
+            payload,
+          })
+        );
+
         if (isInitial) {
           dispatch(clearTravelMakerSummaryArray());
         }
-        dispatch(setTravelMakerSummaryArray({ data: summaryList }));
-        setHasMoreData(hasNextPage);
-        setPage(pageNum + 1);
-      } else {
-        if (isInitial) {
-          dispatch(clearTravelMakerSummaryArray());
+
+        if (Array.isArray(summaryList) && summaryList.length > 0) {
+          dispatch(setTravelMakerSummaryArray({ data: summaryList }));
+          hasMoreRef.current = hasNextPage;
+          setHasMoreData(hasNextPage);
+          setPage(pageNum + 1);
+        } else {
+          hasMoreRef.current = false;
+          setHasMoreData(false);
         }
+      } catch (err) {
+        ToastMessage("Failed to fetch tour data.");
+        hasMoreRef.current = false;
         setHasMoreData(false);
+      } finally {
+        isFetchingRef.current = false;
+        if (!isInitial) setIsLoadingMore(false);
       }
-    } catch (err) {
-      ToastMessage("Failed to fetch tour data.");
-      setHasMoreData(false);
-    } finally {
+    },
+    [dispatch, trigger, mode, selectedEmployee]
+  );
+
+  const handleRefresh = useCallback(
+    async (customFilters) => {
       isFetchingRef.current = false;
-      if (!isInitial) setIsLoadingMore(false);
-    }
-  };
+      hasMoreRef.current = true;
+      setHasMoreData(true);
+      setPage(1);
+      await loadData(1, true, customFilters);
+    },
+    [loadData]
+  );
 
-  const handleRefresh = useCallback(async () => {
-    setHasMoreData(true);
-    setPage(1);
-    await loadData(1, true);
-  }, [filters, mode, selectedEmployee]);
-
-  // Initial load when screen gains focus
+  // Initial load whenever this screen gains focus (deferred if initial modal is pending)
   useFocusEffect(
     useCallback(() => {
+      if (firstLoadRef.current) {
+        // Modal is displayed on initial screen enter; submit or close triggers the initial load
+        return;
+      }
       handleRefresh();
-    }, [])
+    }, [handleRefresh])
   );
+
+  const handleSelfOrOnBehalfSubmit = (res) => {
+    setIsSelfModalVisible(false);
+    dispatch(setMode(res.mode));
+    dispatch(setSelectedBranch(res.selectedBranch));
+    dispatch(setSelectedEmployee(res.selectedEmployee));
+    firstLoadRef.current = false;
+
+    setHasMoreData(true);
+    setPage(1);
+    handleRefresh({
+      ...filtersRef.current,
+      overrideMode: res.mode,
+      overrideEmployee: res.selectedEmployee,
+    });
+  };
+
+  const handleSelfOrOnBehalfClose = () => {
+    setIsSelfModalVisible(false);
+    if (firstLoadRef.current) {
+      firstLoadRef.current = false;
+      setHasMoreData(true);
+      setPage(1);
+      handleRefresh(filtersRef.current);
+    }
+  };
 
   useEffect(() => {
     return () => {
       dispatch(clearTravelMakerSummaryArray());
       dispatch(clearFilters());
+      dispatch(resetSelfOrOnBehalf());
     };
-  }, []);
+  }, [dispatch]);
 
   const handleLoadMore = () => {
     if (!isLoadingMore && hasMoreData && !isFetching && !isFetchingRef.current) {
@@ -231,36 +369,90 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
     }
   };
 
+  // Clear filters before navigating to create screen and pass current onbehalf context
   const handleCreateTour = () => {
+    dispatch(clearFilters());
+
     navigation.navigate("travel_create_screen", {
-      from: "MAKER",
-      tour_id: "NEW",
-      onbehalf: selectedEmployee?.employeegid || selectedEmployee?.id,
-      onbehalfname: selectedEmployee?.employee_name || selectedEmployee?.full_name,
+      mode: mode,
+      onbehalf: mode === "onbehalf" ? (selectedEmployee?.employeegid || selectedEmployee?.id) : null,
+      onbehalfname: mode === "onbehalf" ? (selectedEmployee?.employee_name || selectedEmployee?.full_name) : null,
+      selectedEmployee: mode === "onbehalf" ? selectedEmployee : null,
     });
   };
 
   const handleCardPress = (itemData) => {
+    console.log("========== TOUR ID DEBUG ==========");
+    console.log("FULL ITEM DATA:", JSON.stringify(itemData, null, 2));
+
+    // Get the actual Tour ID from backend response
+    const tourId =
+      itemData?.tourid ??
+      itemData?.tour_id ??
+      itemData?.tourId ??
+      itemData?.id ??
+      null;
+
+    console.log("tourid:", itemData?.tourid);
+    console.log("tour_id:", itemData?.tour_id);
+    console.log("tourId:", itemData?.tourId);
+    console.log("id:", itemData?.id);
+    console.log("FINAL TOUR ID:", tourId);
+    console.log("===================================");
+
+    // Stop navigation if Tour ID is really missing
+    if (
+      tourId === null ||
+      tourId === undefined ||
+      String(tourId).trim() === ""
+    ) {
+      ToastMessage("Tour ID not found");
+      return;
+    }
+
+    // Navigate to edit screen with the SAME Tour ID everywhere
     navigation.navigate("travel_edit_screen", {
-      tourDataParams: itemData,
+      tourDataParams: {
+        ...itemData,
+
+        // Normalize Tour ID
+        id: tourId,
+        tourid: tourId,
+        tour_id: tourId,
+        tourId: tourId,
+      },
+
+      // Also pass separately
+      tour_id: tourId,
+      tourid: tourId,
+      tourId: tourId,
+
       from: "MAKER",
-      tour_id: itemData.id || itemData.requestno,
-      onbehalf: selectedEmployee?.employeegid || selectedEmployee?.id,
-      onbehalfname: selectedEmployee?.employee_name || selectedEmployee?.full_name,
+
+      onbehalf:
+        mode === "onbehalf"
+          ? (selectedEmployee?.employeegid || selectedEmployee?.id)
+          : null,
+
+      onbehalfname:
+        mode === "onbehalf"
+          ? (selectedEmployee?.employee_name || selectedEmployee?.full_name)
+          : null,
     });
   };
 
-  const applyFilters = () => {
+  const applyFilters = (appliedFilters) => {
     setFilterModalVisible(false);
-    handleRefresh();
+    const target = appliedFilters || filtersRef.current;
+    filtersRef.current = target;
+    handleRefresh(target);
   };
 
   const clearAllFilters = () => {
     dispatch(clearFilters());
+    filtersRef.current = {};
     setFilterModalVisible(false);
-    setTimeout(() => {
-      handleRefresh();
-    }, 100);
+    handleRefresh({});
   };
 
   if (isFetching && page === 1 && (!getRedux || getRedux.length === 0)) {
@@ -276,20 +468,50 @@ const TravelMakerSummaryScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={screenStyles.container}>
-      {/* On Behalf Header Banner */}
-      {(mode === "onbehalf" || selectedEmployee) && (
-        <View style={screenStyles.onBehalfContainer}>
-          <Text allowFontScaling={false} style={screenStyles.onBehalfText}>
-            On Behalf Employee -{" "}
-            <Text
-              allowFontScaling={false}
-              style={screenStyles.onBehalfEmployeeName}
-            >
-              {selectedEmployee?.employee_name || selectedEmployee?.full_name}
-            </Text>
-          </Text>
-        </View>
+      {/* On Behalf Header Banner (Condition-wise) */}
+      {mode === "onbehalf" && selectedEmployee && (
+        <TouchableOpacity
+          style={screenStyles.onBehalfContainer}
+          onPress={() => setIsSelfModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <View style={screenStyles.onBehalfRow}>
+            <MaterialIcons
+              name="person"
+              size={moderateScale(20)}
+              color={CustomColors.primaryBlue || "#1D4ED8"}
+            />
+            <View style={screenStyles.onBehalfTextWrap}>
+              <Text allowFontScaling={false} style={screenStyles.onBehalfSubText}>
+                ON BEHALF EMPLOYEE (Tap to switch)
+              </Text>
+              <Text
+                allowFontScaling={false}
+                style={screenStyles.onBehalfEmployeeName}
+                numberOfLines={1}
+              >
+                {selectedEmployee?.employee_name || selectedEmployee?.full_name}{" "}
+                {selectedEmployee?.employeecode || selectedEmployee?.employee_code
+                  ? `(${selectedEmployee?.employeecode || selectedEmployee?.employee_code})`
+                  : ""}
+              </Text>
+            </View>
+            <MaterialIcons
+              name="swap-horiz"
+              size={moderateScale(22)}
+              color={CustomColors.primaryBlue || "#1D4ED8"}
+            />
+          </View>
+        </TouchableOpacity>
       )}
+
+      {/* Self or OnBehalf Modal ("Add Onbehalf Of") */}
+      <SelfOrOnBehalfModal
+        visible={isSelfModalVisible}
+        onSubmit={handleSelfOrOnBehalfSubmit}
+        onClose={handleSelfOrOnBehalfClose}
+        title="Add Onbehalf Of"
+      />
 
       {/* Search Filter Modal */}
       <FilterModal

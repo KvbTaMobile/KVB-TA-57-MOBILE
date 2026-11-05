@@ -148,9 +148,15 @@ const FileDisplaySection = ({ title, files, handleViewFile, handleWebViewFile, r
               <View style={styles.fileActions}>
                 {/* View Button */}
                 <TouchableOpacity
-                  onPress={() =>
-                    file.uri ? handleViewFile(file) : handleWebViewFile(file)
-                  }
+                  onPress={() => {
+                    if (file.uri && typeof handleViewFile === 'function') {
+                      handleViewFile(file);
+                    } else if (typeof handleWebViewFile === 'function') {
+                      handleWebViewFile(file);
+                    } else if (typeof handleViewFile === 'function') {
+                      handleViewFile(file);
+                    }
+                  }}
                   style={styles.actionButton}
                   accessibilityLabel={`View file ${file.name || file.file_name}`}
                   activeOpacity={0.7}
@@ -160,7 +166,11 @@ const FileDisplaySection = ({ title, files, handleViewFile, handleWebViewFile, r
 
                 {/* Remove Button */}
                 <TouchableOpacity
-                  onPress={() => removeFile(file.uri || file.id)}
+                  onPress={() => {
+                    if (typeof removeFile === 'function') {
+                      removeFile(file.uri || file.id);
+                    }
+                  }}
                   style={[
                     styles.actionButton,
                     styles.removeButton, // Specific style for remove button

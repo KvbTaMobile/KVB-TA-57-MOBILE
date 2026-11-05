@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -50,25 +50,45 @@ import { setUserModules } from "../redux/slices/UserModulesSlice";
 const { width, height } = Dimensions.get("window");
 const DRAWER_WIDTH = width * 0.75;
 
-// 🔑 TA submodule tab list — mirrors Angular's taTransactionList
+// 🔑 TA submodule tab list — mirrors Angular's taTransactionList (supporting id, index, name, label)
 const TA_TRANSACTION_LIST = [
-  { name: "Tour ID Creation", index: 1 },
-  { name: "Tour ID Approval", index: 2 },
-  { name: "Advance Request", index: 3 },
-  { name: "Advance Approval", index: 4 },
-  { name: "Claim Submission", index: 5 },
-  { name: "Claim Approval", index: 6 },
-  { name: "Cancel Request", index: 7 },
-  { name: "Cancel Approval", index: 8 },
-  { name: "Assign Approver", index: 9 },
-  { name: "Advance Recovery", index: 10 },
-  { name: "Settlement Approval", index: 11 },
-  { name: "Tour Report", index: 12 },
+  { id: 1, index: 1, name: "Tour ID Creation", label: "Tour ID Creation" },
+  { id: 2, index: 2, name: "Tour ID Approval", label: "Tour ID Approval" },
+  { id: 3, index: 3, name: "Advance Request", label: "Advance Request" },
+  { id: 4, index: 4, name: "Advance Approval", label: "Advance Approval" },
+  { id: 5, index: 5, name: "Claim Submission", label: "Claim Submission" },
+  { id: 6, index: 6, name: "Claim Approval", label: "Claim Approval" },
+  { id: 7, index: 7, name: "Cancel Request", label: "Cancel Request" },
+  { id: 8, index: 8, name: "Cancel Approval", label: "Cancel Approval" },
+  { id: 9, index: 9, name: "Assign Approver", label: "Assign Approver" },
+  { id: 10, index: 10, name: "Advance Recovery", label: "Advance Recovery" },
+  { id: 11, index: 11, name: "Settlement Approval", label: "Settlement Approval" },
+  { id: 12, index: 12, name: "Tour Report", label: "Tour Report" },
 ];
 
 // 🔑 Mirrors ta-transaction-summary.component.ts ngOnInit permission logic
 function getTaPermissions(modules) {
-  const taModule = modules?.find((m) => m.name === "TA e-Claim");
+  const taModule =
+    modules?.find((m) => {
+      const n = (m.name || "").toLowerCase().trim();
+      return (
+        (n === "ta e-claim" || n === "ta eclaim" || n === "ta-eclaim" || n === "ta-e-claim" || n === "ta claim" || n === "ta") &&
+        !n.includes("master") &&
+        !n.includes("documentation") &&
+        !n.includes("ecf") &&
+        !n.includes("task")
+      );
+    }) ||
+    modules?.find((m) => {
+      const n = (m.name || "").toLowerCase().trim();
+      return (
+        !n.includes("master") &&
+        !n.includes("documentation") &&
+        !n.includes("ecf") &&
+        !n.includes("task") &&
+        (n.includes("ta") || n.includes("claim"))
+      );
+    });
   const submodules = taModule?.submodule || [];
 
   let permissionlist = [];
@@ -79,10 +99,10 @@ function getTaPermissions(modules) {
   };
 
   const getRole = (subName) =>
-    submodules.find((s) => s.name?.toLowerCase() === subName)?.role || [];
+    submodules.find((s) => (s.name || "")?.toLowerCase()?.trim() === subName)?.role || [];
 
   const hasRole = (roleArr, roleName) =>
-    roleArr.some((r) => r.name?.toLowerCase() === roleName);
+    roleArr.some((r) => (r.name || "")?.toLowerCase()?.trim() === roleName);
 
   // Tour
   const travelrole = getRole("tour");
@@ -123,12 +143,15 @@ function getTaPermissions(modules) {
 
   // Report
   const reportrole = getRole("report");
-  if (hasRole(reportrole, "checker")) permissionlist.push(12);
+  if (hasRole(reportrole, "checker")) {
+    permissionlist.push(12);
+  }
 
   permissionlist = [...new Set(permissionlist)]; // dedupe
 
-  const permittedList = TA_TRANSACTION_LIST.filter((item) =>
-    permissionlist.includes(item.index)
+  const permittedList = TA_TRANSACTION_LIST.filter(
+    (item) =>
+      permissionlist.includes(item.index) || permissionlist.includes(item.id)
   );
 
   return { permittedList, flags, permissionlist };
@@ -142,12 +165,47 @@ export default function DrawerNavigator() {
   const modules = useSelector((state) => state.userModules.modules);
 
   // 🔑 Only show "TA e-Claim" in the drawer's module list
-  const uniqueModules = modules?.filter((m) => m.name === "TA e-Claim") || [];
+  // Exclude ta master, documentation, ecf claim, and task as requested
+  const uniqueModules = useMemo(() => {
+    if (!modules || modules.length === 0) return [];
+
+    // Exact match for TA e-Claim
+    const exactTa = modules.filter((m) => {
+      const n = (m.name || "").toLowerCase().trim();
+      return (
+        (n === "ta e-claim" || n === "ta eclaim" || n === "ta-eclaim" || n === "ta-e-claim" || n === "ta claim" || n === "ta") &&
+        !n.includes("master") &&
+        !n.includes("documentation") &&
+        !n.includes("ecf") &&
+        !n.includes("task")
+      );
+    });
+    if (exactTa.length > 0) return exactTa;
+
+    // Fallback if name slightly differs: keep TA/claim module while explicitly excluding others
+    return modules.filter((m) => {
+      const n = (m.name || "").toLowerCase().trim();
+      const isExcluded =
+        n.includes("master") ||
+        n.includes("documentation") ||
+        n.includes("ecf") ||
+        n.includes("task");
+      return !isExcluded && (n.includes("ta") || n.includes("claim"));
+    });
+  }, [modules]);
 
   // 🔑 Default selected module to TA e-Claim specifically, not modules[0]
   const [selectedModule, setSelectedModule] = useState(
-    uniqueModules.length > 0 ? uniqueModules[0] : null
+    uniqueModules.length > 0 ? uniqueModules[0] : (modules && modules.length > 0 ? modules[0] : null)
   );
+
+  useEffect(() => {
+    if (uniqueModules.length > 0) {
+      if (!selectedModule || !uniqueModules.some((m) => m.name === selectedModule.name)) {
+        setSelectedModule(uniqueModules[0]);
+      }
+    }
+  }, [uniqueModules]);
 
   const dispatch = useDispatch();
   const [logoutDialogStatus, setLogoutDialogStatus] = useState(false);
@@ -173,7 +231,6 @@ export default function DrawerNavigator() {
 
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: drawerProgress.value * 0.4,
-    pointerEvents: drawerProgress.value > 0 ? "auto" : "none",
   }));
   const handleLogout = async () => {
     try {
@@ -355,7 +412,9 @@ export default function DrawerNavigator() {
         style={styles.mainContent}
         edges={["top", "bottom"]}
       >
-        {selectedModule?.name === "TA e-Claim" && (
+        {(selectedModule?.name === "TA e-Claim" ||
+          selectedModule?.name?.toLowerCase()?.includes("ta") ||
+          !selectedModule) && (
           <TAStackNavigator
             openDrawer={openDrawer}
             permittedList={taPermittedList}
@@ -419,7 +478,7 @@ export default function DrawerNavigator() {
                       style={styles.drawerProfileImage}
                     />
                     <Text allowFontScaling={false} style={styles.drawerUserName}>
-                      {user?.name}
+                      {user?.name || user?.employee_name || user?.full_name || (user?.code ? `Emp ID: ${user.code}` : "User")}
                     </Text>
                     <Text allowFontScaling={false} style={styles.drawerUserRole}>
                       {user?.entity_name}

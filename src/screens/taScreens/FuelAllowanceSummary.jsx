@@ -173,43 +173,43 @@ const FuelAllowanceSummary = () => {
 
   });
   useLayoutEffect(() => {
-  navigation.setOptions({
-    headerShown: true,
+    navigation.setOptions({
+      headerShown: true,
 
-    headerStyle: {
-      backgroundColor: CustomColors.appThemeColor,
-    },
+      headerStyle: {
+        backgroundColor: CustomColors.appThemeColor,
+      },
 
-    headerTitle: () => (
-      <Text
-        allowFontScaling={false}
-        style={{
-          ...globalStyles.headerTitle,
-          fontSize: moderateScale(20),
-          fontWeight: "600",
-          color: CustomColors.textWhite,
-        }}
-      >
-        Fuel Allowance Summary
-      </Text>
-    ),
+      headerTitle: () => (
+        <Text
+          allowFontScaling={false}
+          style={{
+            ...globalStyles.headerTitle,
+            fontSize: moderateScale(20),
+            fontWeight: "600",
+            color: CustomColors.textWhite,
+          }}
+        >
+          Fuel Allowance Summary
+        </Text>
+      ),
 
-    headerTintColor: CustomColors.textWhite,
+      headerTintColor: CustomColors.textWhite,
 
-    headerRight: () => (
-      <TouchableOpacity
-        onPress={() => navigation.navigate("fuel_allowance_creation")}
-        style={{ marginRight: 16 }}
-      >
-        <MaterialCommunityIcons
-          name="book-plus-multiple-outline"
-          size={24}
-          color={CustomColors.textWhite}
-        />
-      </TouchableOpacity>
-    ),
-  });
-}, [navigation, isDark]);
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate("fuel_allowance_creation")}
+          style={{ marginRight: 16 }}
+        >
+          <MaterialCommunityIcons
+            name="book-plus-multiple-outline"
+            size={24}
+            color={CustomColors.textWhite}
+          />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, isDark]);
 
   useEffect(() => {
     if (responseData && responseData.pagination?.index === pageNo) {

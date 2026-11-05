@@ -5,8 +5,14 @@ import { logout as clearAuth } from "../../redux/slices/AuthSlice"; // ✅ corre
 import { speak, isSpeechEnabled } from "../../utilities/SpeechHelper";
 
 export default function ToastMessage(message, logout = false, dispatch) {
+  // Normalize message to string if an object was passed
+  if (typeof message === "object" && message !== null) {
+    message = message.text2 || message.text1 || message.message || message.description || JSON.stringify(message);
+  }
+  message = String(message ?? "");
+
   // 🔊 Speak message only if speech is enabled globally
-  if (isSpeechEnabled()) {
+  if (isSpeechEnabled() && message) {
     speak(message);
   }
 
@@ -51,3 +57,7 @@ export default function ToastMessage(message, logout = false, dispatch) {
     }
   }
 }
+
+ToastMessage.show = function (options, logout = false, dispatch) {
+  return ToastMessage(options, logout, dispatch);
+};

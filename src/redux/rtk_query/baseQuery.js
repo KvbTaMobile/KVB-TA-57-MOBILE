@@ -7,7 +7,7 @@ export const baseQuery = fetchBaseQuery({
   prepareHeaders: (headers, { getState, endpoint }) => {
 
     // Public APIs
-    if (["login", "getEntity", "getCaptacha"].includes(endpoint)) {
+    if (["login", "getEntity", "getCaptacha", "getPublicKey"].includes(endpoint)) {
       headers.set("Content-Type", "application/json");
       return headers;
     }
