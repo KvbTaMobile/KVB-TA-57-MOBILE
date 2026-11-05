@@ -27,6 +27,7 @@ import { moderateScale, verticalScale, horizontalScale } from "../../styles/Metr
 import * as WebBrowser from "expo-web-browser";
 import * as FileSystem from "expo-file-system/legacy";
 import * as IntentLauncher from "expo-intent-launcher";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import ToastMessage from "../../TaComponents/toast/ToastMessage";
 import FileDisplaySection from "../../TaComponents/cards/FileDisplaySection";
@@ -36,7 +37,13 @@ import {
   useLazyGetApprovalFlowQuery,
   useLazyEmployeeListQuery,
   useLazyBranchListQuery,
+  useTourApproveMutation,
+  useTourRejectMutation,
+  useTourReturnMutation,
+  useTourForwardMutation,
+  useTourCancelMutation,
   apiSlice,
+  useLazyTourReasonListQuery
 } from "../../redux/rtk_query/apiSlice";
 import {
   updateField,
@@ -113,8 +120,12 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
   const tourDataParams = route?.params?.tourDataParams;
   const tour_id = route?.params?.tour_id || tourDataParams?.id;
   const from = route?.params?.from || "MAKER";
-
+const Id = route?.params?.id 
+console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   const isMaker = from === "MAKER";
+  const [isChecker, setIsChecker] = useState(from === "CHECKER");
+  console.log("isMaker:", isMaker, "isChecker:", isChecker, "from:", from);
+  const [isCancelMaker, setIsCancelMaker] = useState(from === "CANCEL_MAKER");
 
   const dispatch = useDispatch();
   const isDark = useSelector((state) => state.theme.isDark);
@@ -127,22 +138,39 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditable, setIsEditable] = useState(true);
 
+  // Date Picker state
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [dateTargetField, setDateTargetField] = useState(null);
   const [activeDetailIndex, setActiveDetailIndex] = useState(null);
 
+  // Action Sheet Pickers state
   const [isPermittedByPickerVisible, setIsPermittedByPickerVisible] = useState(false);
   const [permittedByList, setPermittedByList] = useState([]);
   const [isBranchPickerVisible, setIsBranchPickerVisible] = useState(false);
   const [branchList, setBranchList] = useState([]);
   const [isApproverPickerVisible, setIsApproverPickerVisible] = useState(false);
   const [approverList, setApproverList] = useState([]);
+// Replace your openReasonPicker and reason states with this:
+  const [isReasonPickerVisible, setIsReasonPickerVisible] = useState(false);
+  const [reasonList, setReasonList] = useState([]);
+  
+  const [triggerReason, { isFetching: isReasonLoading }] = useLazyTourReasonListQuery();
 
+ 
+  // RTK Query hooks
   const [triggerApprovalFlow] = useLazyGetApprovalFlowQuery();
   const [triggerTourDataGet, { isLoading: isLoadingTourData, data: tourData }] =
     useLazyTourDataGetQuery();
+    console.log("Tour Data:", tourData);
   const [triggerEmployeeList, { isFetching: isEmpLoading }] = useLazyEmployeeListQuery();
   const [triggerBranchList, { isFetching: isBranchLoading }] = useLazyBranchListQuery();
+
+  // Approver Mutations
+  const [triggerTourApprove] = useTourApproveMutation();
+  const [triggerTourReject] = useTourRejectMutation();
+  const [triggerTourReturn] = useTourReturnMutation();
+  const [triggerTourForward] = useTourForwardMutation();
+  const [triggerTourCancel] = useTourCancelMutation();
 
   const scrollViewRef = useRef(null);
 
@@ -224,11 +252,57 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       marginLeft: horizontalScale(6),
     },
     pickFileBtn: {
+      flex: 1,
+      flexDirection: "row",
       backgroundColor: CustomColors.appThemeColor,
-      padding: moderateScale(10),
-      borderRadius: moderateScale(6),
+      paddingVertical: verticalScale(10),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(8),
       alignItems: "center",
-      marginVertical: verticalScale(10),
+      justifyContent: "center",
+      marginRight: horizontalScale(6),
+    },
+    cameraBtn: {
+      flex: 1,
+      flexDirection: "row",
+      backgroundColor: "#2e7d32",
+      paddingVertical: verticalScale(10),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(8),
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: horizontalScale(6),
+    },
+    btnText: {
+      color: CustomColors.white,
+      fontFamily: Fonts.bold,
+      fontSize: moderateScale(13),
+      marginLeft: horizontalScale(6),
+    },
+    // Alignment Fix for 4 Action Buttons
+    checkerBtnContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: horizontalScale(8),
+      marginTop: verticalScale(8),
+    },
+    actionBtn: {
+      width: "48%",
+      paddingVertical: verticalScale(12),
+      borderRadius: moderateScale(8),
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: verticalScale(8),
+    },
+    approveBtn: { backgroundColor: "#2e7d32" },
+    rejectBtn: { backgroundColor: "#d32f2f" },
+    returnBtn: { backgroundColor: "#f57c00" },
+    forwardBtn: { backgroundColor: "#0288d1" },
+    btnLabel: {
+      color: CustomColors.white,
+      fontFamily: Fonts.bold,
+      fontSize: moderateScale(13),
     },
   });
 
@@ -277,8 +351,6 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       .then((res) => dispatch(setApprovalFlow(res?.data || res)))
       .catch(() => {});
 
-    // 🔑 FIX FOR 404 WITHOUT CHANGING apiSlice:
-    // Direct fetch to match URL path format: /taserv/fetch_documents/4796
     const fetchDocumentsDirect = async () => {
       try {
         const response = await fetch(
@@ -320,7 +392,13 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
   useEffect(() => {
     if (tourData) {
       const tourStatus = tourData.tour_status;
-      const canEdit = isMaker && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus !== "PENDING";
+      const appLevel = tourData.latest_applevel || 0;
+
+      if (from === "CHECKER" || (tourStatus === "PENDING" && appLevel > 0)) {
+        setIsChecker(true);
+      }
+
+      const canEdit =  from === "MAKER"  && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus === "PENDING" && tourStatus !== "RETURNED" && tourStatus !== "CANCELLED";
       setIsEditable(canEdit);
 
       const parseDateString = (dateString) => {
@@ -337,21 +415,18 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       const startDateISO = parseDateString(tourData.startdate)?.toISOString();
       const endDateISO = parseDateString(tourData.enddate)?.toISOString();
 
-      // Permitted By Normalization
       const permittedByNormalized = normalizePerson(tourData.permitted_by_data) || {
         id: tourData.permittedby_id,
         code: tourData.permittedby_code,
         full_name: tourData.permittedby,
       };
 
-      // Approver Normalization
       const approverNormalized = normalizePerson(tourData.approver_data) || {
         id: tourData.approver_branch_data?.id,
         code: tourData.approver_branch_data?.code,
         full_name: tourData.approver_branch_data?.full_name,
       };
 
-      // Branch Normalization
       const branchNormalized = normalizeBranch(tourData.branch_data_maker) || {
         id: tourData.empbranchgid,
         code: tourData.branch_code,
@@ -389,7 +464,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       };
       dispatch(updateField(payload));
     }
-  }, [tourData, isMaker, dispatch]);
+  }, [tourData, isMaker, from, dispatch]);
 
   const handleOpenPermittedByPicker = async () => {
     if (!isEditable) return;
@@ -403,16 +478,35 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
   };
 
   const handleOpenBranchPicker = async () => {
-    if (!isEditable) return;
+    if (!isEditable && !isChecker) return;
     setIsBranchPickerVisible(true);
     try {
       const res = await triggerBranchList({ name: "", page: 1 }).unwrap();
       setBranchList(res?.data || []);
     } catch (e) {}
   };
-
-  const handleOpenApproverPicker = async (branchId) => {
+ const openReasonPicker = async () => {
     if (!isEditable) return;
+    setIsReasonPickerVisible(true);
+    try {
+      const res = await triggerReason({ name: "", page: 1 }).unwrap();
+      setReasonList(res?.data || res || []);
+    } catch (e) {
+      ToastMessage("Failed to fetch tour reasons.");
+    }
+  };
+   const handleSearchReason = useCallback((query) => {
+    if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+    debounceTimeout.current = setTimeout(() => {
+      setCurrentReasonSearchQuery(query);
+      setReasonPage(1);
+      setHasMoreReasons(true);
+      dispatch(setReasonList({ data: [] }));
+      triggerReason({ name: query, page: 1 });
+    }, 500);
+  }, [triggerReason, dispatch]);
+  const handleOpenApproverPicker = async (branchId) => {
+    if (!isEditable && !isChecker) return;
     if (!isValidId(branchId)) {
       ToastMessage("Please select a branch first.");
       return;
@@ -431,6 +525,33 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       setFiles((prev) => [...prev, ...selectedFiles]);
     } catch (err) {
       ToastMessage("Failed to pick files.");
+    }
+  };
+
+  const openCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission required", "Camera access is needed.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        const asset = result.assets[0];
+        const newFile = {
+          uri: asset.uri,
+          name: asset.fileName || `camera_${Date.now()}.jpg`,
+          type: asset.mimeType || "image/jpeg",
+        };
+        setFiles((prev) => [...prev, newFile]);
+      }
+    } catch (e) {
+      ToastMessage("Failed to launch camera.");
     }
   };
 
@@ -458,6 +579,278 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       setFieldValue(`details[${activeDetailIndex}].detailStartDate`, isoDate);
     } else if (dateTargetField === "detailEnd" && activeDetailIndex !== null) {
       setFieldValue(`details[${activeDetailIndex}].detailEndDate`, isoDate);
+    }
+  };
+
+// Approver Action Handlers
+
+const handleApprove = async (values) => {
+  console.log("Approver VALUES:", values);
+
+  if (!values.approverRemarks?.trim()) {
+    ToastMessage("Please enter Remarks");
+    return;
+  }
+
+  try {
+    setIsSubmitting(true);
+
+    // Get the current approval record
+    const currentApproval =
+      tourData?.approve?.find(
+        (item) =>
+          Number(item.applevel) === Number(tourData?.latest_applevel)
+      ) ||
+      tourData?.approve?.[tourData?.approve?.length - 1];
+
+    // Approval record ID
+    const approvalId = currentApproval?.id;
+
+    // Current approver employee ID
+    const approvedById =
+      tourData?.approver_data?.id ||
+      currentApproval?.approvedby_id ||
+      values.approval?.id;
+
+    // Tour ID
+    const tourId = tourData?.id || tour_id;
+
+    if (!isValidId(tourId)) {
+      ToastMessage("Tour ID not available.");
+      return;
+    }
+
+    if (!isValidId(approvalId)) {
+      ToastMessage("Approval ID not available.");
+      console.log("Approval record not found:", tourData?.approve);
+      return;
+    }
+
+    if (!isValidId(approvedById)) {
+      ToastMessage("Approver employee ID not available.");
+      console.log("Approver ID not found:", {
+        approver_data: tourData?.approver_data,
+        currentApproval,
+        valuesApproval: values.approval,
+      });
+      return;
+    }
+
+    const payload = {
+      id: Number(approvalId),
+      tourgid: Number(tourId),
+      apptype: "tour",
+      applevel: Number(
+        tourData?.latest_applevel ||
+        currentApproval?.applevel ||
+        1
+      ),
+      appcomment: values.approverRemarks.trim(),
+      approvedby: Number(approvedById),
+      status: "3",
+    };
+
+    console.log("================================");
+    console.log("APPROVE PAYLOAD:", payload);
+    console.log("Approval ID:", approvalId);
+    console.log("Tour ID:", tourId);
+    console.log("Approved By:", approvedById);
+    console.log("================================");
+
+    const response = await uploadMultipart({
+      url: `${Environment.taServiceUrl}/taserv/tourapprove`,
+
+      data: payload,
+
+      files: (files || []).map((file, index) => ({
+        uri: file.uri,
+        name: file.name || `file_${index}.jpg`,
+        type: file.type || file.mimeType || "image/jpeg",
+        size: file.size || 0,
+      })),
+
+      headers: {
+        Authorization: `Token ${authToken}`,
+        ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+        ...(csrfCookie ? { "X-CSRFCookie": csrfCookie } : {}),
+      },
+    });
+
+    console.log("Approval Response:", response);
+
+    if (
+      response?.status === "success" ||
+      response?.message === "Success"
+    ) {
+      ToastMessage("Tour Approved Successfully");
+      navigation.goBack();
+    } else {
+      ToastMessage(
+        response?.description ||
+        response?.message ||
+        "Approval failed."
+      );
+    }
+  } catch (error) {
+    console.log("Approve Error:", error);
+    ToastMessage("Approval failed.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+
+
+const handleReject = async (values) => {
+  if (!values.approverRemarks) {
+    ToastMessage("Please enter Remarks");
+    return;
+  }
+  try {
+    setIsSubmitting(true);
+
+    const payload = {
+      id: Id,
+      tour_id: tourData?.tourid || tour_id,
+      apptype: "tour",
+      appcomment: values.approverRemarks,
+    };
+
+    const response = await uploadMultipart({
+      url: `${Environment.taServiceUrl}/taserv/tourreject`,
+      data: payload,
+      files: (files || []).map((file, index) => ({
+        uri: file.uri,
+        name: file.name || `file_${index}.jpg`,
+        type: file.type || file.mimeType || "image/jpeg",
+        size: file.size || 0,
+      })),
+      headers: {
+        Authorization: `Token ${authToken}`,
+        ...(csrfToken && { "X-CSRFToken": csrfToken }),
+        ...(csrfCookie && { "X-CSRFCookie": csrfCookie }),
+      },
+    });
+
+    if (response?.status === "success" || response?.message === "Success") {
+      ToastMessage("Tour Rejected Successfully");
+      navigation.goBack();
+    } else {
+      ToastMessage(response?.description || response?.message || "Reject failed.");
+    }
+  } catch (e) {
+    ToastMessage("Reject failed.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+const handleReturn = async (values) => {
+  if (!values.approverRemarks) {
+    ToastMessage("Please enter Remarks");
+    return;
+  }
+  try {
+    setIsSubmitting(true);
+
+    const payload = {
+      id: Id,
+      tour_id: tourData?.tourid || tour_id,
+      apptype: "tour",
+      appcomment: values.approverRemarks,
+    };
+
+    const response = await uploadMultipart({
+      url: `${Environment.taServiceUrl}/taserv/tourreturn`,
+      data: payload,
+      files: (files || []).map((file, index) => ({
+        uri: file.uri,
+        name: file.name || `file_${index}.jpg`,
+        type: file.type || file.mimeType || "image/jpeg",
+        size: file.size || 0,
+      })),
+      headers: {
+        Authorization: `Token ${authToken}`,
+        ...(csrfToken && { "X-CSRFToken": csrfToken }),
+        ...(csrfCookie && { "X-CSRFCookie": csrfCookie }),
+      },
+    });
+
+    if (response?.status === "success" || response?.message === "Success") {
+      ToastMessage("Tour Returned Successfully");
+      navigation.goBack();
+    } else {
+      ToastMessage(response?.description || response?.message || "Return failed.");
+    }
+  } catch (e) {
+    ToastMessage("Return failed.");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  const handleForward = async (values) => {
+    if (!values.approverRemarks) {
+      ToastMessage("Please enter Remarks");
+      return;
+    }
+    if (!values.approval?.id) {
+      ToastMessage("Please Select Forward Approver Employee");
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await triggerTourForward({
+        data: {
+          id: Id,
+          tour_id: tourData?.tourid || tour_id,
+          apptype: "tour",
+          applevel: "2",
+          appcomment: values.approverRemarks,
+          approvedby: values.approval.id,
+        },
+      }).unwrap();
+
+      if (res?.status === "success" || res?.message === "Success") {
+        ToastMessage("Tour Forwarded Successfully");
+        navigation.goBack();
+      } else {
+        ToastMessage(res?.description || "Forward failed.");
+      }
+    } catch (e) {
+      ToastMessage("Forward failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelSubmit = async (values) => {
+    if (!values.approverRemarks) {
+      ToastMessage("Please enter Cancel Reason");
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const res = await triggerTourCancel({
+        data: {
+          tour_id: tour_id,
+          apptype: "TourCancel",
+          appcomment: values.approverRemarks,
+          approval: values.approval?.id || 0,
+          status: 1,
+        },
+      }).unwrap();
+
+      if (res?.status === "success" || res?.message === "Success") {
+        ToastMessage("Cancel Request Submitted Successfully");
+        navigation.goBack();
+      } else {
+        ToastMessage(res?.description || "Cancel submission failed.");
+      }
+    } catch (e) {
+      ToastMessage("Cancel submission failed.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -494,14 +887,14 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
           purposeofvisit: String(item.purposeofvisit).trim(),
         })),
       };
-
+console.log("Submit Data:", data);
       const uploadFiles = (files || []).map((file, index) => ({
         uri: file.uri,
         name: file.name || `file_${index}.jpg`,
         type: file.type || file.mimeType || "image/jpeg",
         size: file.size || 0,
       }));
-
+console.log("Upload Files:", uploadFiles);
       const response = await uploadMultipart({
         url: `${Environment.taServiceUrl}/taserv/tour`,
         data,
@@ -512,7 +905,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
           ...(csrfCookie ? { "X-CSRFCookie": csrfCookie } : {}),
         },
       });
-
+console.log("Submit Response:", response);
       if (response?.status === "success" || response?.message === "Success") {
         ToastMessage("Tour Updated Successfully");
         navigation.goBack();
@@ -604,7 +997,6 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
       <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: CustomColors.appScreenColor }}>
         <Formik enableReinitialize initialValues={travelForm} onSubmit={handleSubmit}>
           {({ values, handleChange, handleSubmit: formikSubmit, setFieldValue }) => (
-            
             <>
               <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" ref={scrollViewRef}>
 
@@ -628,10 +1020,25 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   <TextInput style={styles.input} value={values.empGrade} editable={false} allowFontScaling={false} />
                 </View>
 
-                <View style={styles.sectionCard}>
-                  <Text allowFontScaling={false} style={styles.sectionHeader}>Tour Details</Text>
-                  <Text allowFontScaling={false} style={styles.label}>Tour Reason</Text>
-                  <TextInput style={styles.input} value={values.reason?.name} editable={false} allowFontScaling={false} />
+              <View style={styles.sectionCard}>
+  <Text allowFontScaling={false} style={styles.sectionHeader}>Tour Details</Text>
+  
+  <Text allowFontScaling={false} style={styles.label}>
+    Tour Reason <Text allowFontScaling={false} style={styles.mandatory}>*</Text>
+  </Text>
+  
+  <TouchableOpacity 
+    onPress={openReasonPicker} 
+    style={[styles.input, !isEditable && { opacity: 0.6 }]} 
+    disabled={!isEditable}
+  >
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+      <Text allowFontScaling={false} style={{ color: values.reason?.name ? CustomColors.textDark : CustomColors.textGray }}>
+        {values.reason?.name ? String(values.reason.name) : "Select Reason"}
+      </Text>
+      <Ionicons name="chevron-down" size={20} color={CustomColors.textGray} />
+    </View>
+  </TouchableOpacity>
 
                   <View style={styles.dateRow}>
                     <TouchableOpacity
@@ -752,21 +1159,48 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   ))}
                 </View>
 
+                {/* Upload Attachments Section */}
                 <View style={styles.sectionCard}>
-                  <Text allowFontScaling={false} style={styles.sectionHeader}>Attachments</Text>
+                  <Text allowFontScaling={false} style={styles.sectionHeader}>Upload Attachments</Text>
+                  
+                  {(isEditable || isChecker) && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: verticalScale(10) }}>
+                      <TouchableOpacity style={modalstyles.pickFileBtn} onPress={handlePickLocalFiles}>
+                        <Ionicons name="document-attach-outline" size={20} color={CustomColors.white} />
+                        <Text style={modalstyles.btnText}> Pick Files</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={modalstyles.cameraBtn} onPress={openCamera}>
+                        <Ionicons name="camera-outline" size={20} color={CustomColors.white} />
+                        <Text style={modalstyles.btnText}> Camera</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Local Selected Files Display */}
+                  {files.length > 0 && (
+                    <FileDisplaySection
+                      title="Selected Files"
+                      files={files}
+                      removeFile={handleRemoveLocalFile}
+                      isEditable={isEditable || isChecker}
+                    />
+                  )}
+
                   <TouchableOpacity style={modalstyles.attachmentBtn} onPress={() => setIsAttachmentModalVisible(true)}>
                     <Ionicons name="attach-outline" size={20} color={CustomColors.white} />
                     <Text allowFontScaling={false} style={modalstyles.attachmentBtnText}>
-                      Attachment ({totalAttachmentCount})
+                      View All Attachments ({totalAttachmentCount})
                     </Text>
                   </TouchableOpacity>
                 </View>
 
+                {/* To Approver Section */}
                 <View style={styles.sectionCard}>
                   <Text allowFontScaling={false} style={styles.sectionHeader}>To Approver</Text>
 
                   <Text allowFontScaling={false} style={styles.label}>Branch</Text>
-                  <TouchableOpacity onPress={handleOpenBranchPicker} disabled={!isEditable}>
+                  <TouchableOpacity onPress={handleOpenBranchPicker} disabled={!isEditable && !isChecker}>
                     <TextInput
                       style={styles.input}
                       value={
@@ -783,7 +1217,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   <Text allowFontScaling={false} style={styles.label}>Approver Employee</Text>
                   <TouchableOpacity
                     onPress={() => handleOpenApproverPicker(values.empbranchgid?.id)}
-                    disabled={!isEditable || !isValidId(values.empbranchgid?.id)}
+                    disabled={(!isEditable && !isChecker) || !isValidId(values.empbranchgid?.id)}
                   >
                     <TextInput
                       style={styles.input}
@@ -799,17 +1233,87 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   </TouchableOpacity>
                 </View>
 
+                {/* Approver Remarks Section */}
+                {(from === "CHECKER") || (from === "CANCEL_MAKER") ? (
+                  <View style={styles.sectionCard}>
+                    <Text allowFontScaling={false} style={styles.sectionHeader}>
+                      {isChecker ? "Approver Remarks" : "Cancel Remarks"}
+                    </Text>
+                    <TextInput
+                      style={[styles.input, { minHeight: verticalScale(80), textAlignVertical: "top" }]}
+                      editable={true}
+                      placeholder="Enter remarks here..."
+                      placeholderTextColor={CustomColors.textGray}
+                      value={values.approverRemarks}
+                      onChangeText={handleChange("approverRemarks")}
+                      multiline
+                      allowFontScaling={false}
+                    />
+                  </View>
+                ): null}
+
                 <View style={{ height: 80 }} />
               </ScrollView>
 
+              {/* Action Buttons Container */}
               <View style={styles.submitButtonContainer}>
-                {isMaker && (
+                {from === "MAKER" && isMaker && (
                   <TouchableOpacity style={styles.submitButtonFullWidth} onPress={formikSubmit} disabled={isSubmitting || !isEditable}>
                     {isSubmitting ? (
                       <ActivityIndicator color={CustomColors.textWhite} />
                     ) : (
                       <Text allowFontScaling={false} style={styles.submitButtonText}>Update Tour</Text>
                     )}
+                  </TouchableOpacity>
+                )}
+
+                {/* 🔑 Approver Action Buttons Grid (Approve, Reject, Return, Forward) */}
+                {console.log("FROM:", from, "IS CHECKER:", isChecker,"condition:", from === "CHECKER" && isChecker)}
+                {from ==="CHECKER"&&isChecker && (
+                  
+                  <View style={modalstyles.checkerBtnContainer}>
+                    <TouchableOpacity
+                      style={[modalstyles.actionBtn, modalstyles.approveBtn]}
+                      onPress={() => handleApprove(values)}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={modalstyles.btnLabel}>Approve</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[modalstyles.actionBtn, modalstyles.rejectBtn]}
+                      onPress={() => handleReject(values)}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={modalstyles.btnLabel}>Reject</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[modalstyles.actionBtn, modalstyles.returnBtn]}
+                      onPress={() => handleReturn(values)}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={modalstyles.btnLabel}>Return</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[modalstyles.actionBtn, modalstyles.forwardBtn]}
+                      onPress={() => handleForward(values)}
+                      disabled={isSubmitting}
+                    >
+                      <Text style={modalstyles.btnLabel}>Forward</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {/* Cancel Maker Actions */}
+                {isCancelMaker && (
+                  <TouchableOpacity
+                    style={styles.submitButtonFullWidth}
+                    onPress={() => handleCancelSubmit(values)}
+                    disabled={isSubmitting}
+                  >
+                    <Text allowFontScaling={false} style={styles.submitButtonText}>Submit Cancel Request</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -822,7 +1326,22 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
                   onChange={(evt, date) => handleConfirmDate(evt, date, setFieldValue, values)}
                 />
               )}
-
+<CustomActionSheetPicker
+  pickerStatus={isReasonPickerVisible}
+  setPickerStatus={setIsReasonPickerVisible}
+  title="Select Tour Reason"
+  optionsData={reasonList.map((reason) => ({
+    label: reason.name,
+    value: reason.id,
+    raw: reason,
+  }))}
+  RenderItem={renderDropdownItem}
+  onPress={(selected) => {
+    setFieldValue("reason", { id: selected.raw.id, name: selected.raw.name });
+    setIsReasonPickerVisible(false);
+  }}
+  isLoading={isReasonLoading}
+/>
               <CustomActionSheetPicker
                 pickerStatus={isPermittedByPickerVisible}
                 setPickerStatus={setIsPermittedByPickerVisible}
@@ -879,6 +1398,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
         </Formik>
       </SafeAreaView>
 
+      {/* Attachments Popup Modal */}
       <Modal animationType="slide" transparent={true} visible={isAttachmentModalVisible} onRequestClose={() => setIsAttachmentModalVisible(false)}>
         <View style={modalstyles.modalOverlay}>
           <View style={modalstyles.modalContent}>
@@ -888,25 +1408,19 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
             <Text allowFontScaling={false} style={modalstyles.modalTitle}>Attachments</Text>
 
             <ScrollView>
-              {isEditable && (
-                <TouchableOpacity style={modalstyles.pickFileBtn} onPress={handlePickLocalFiles}>
-                  <Text style={{ color: CustomColors.white, fontFamily: Fonts.bold }}>Attach New File</Text>
-                </TouchableOpacity>
-              )}
-
               {files.length > 0 && (
                 <FileDisplaySection
                   title="Newly Attached Files"
                   files={files}
                   removeFile={handleRemoveLocalFile}
-                  isEditable={isEditable}
+                  isEditable={isEditable || isChecker}
                 />
               )}
 
-              {travelForm.DocumentData?.tour_maker?.length > 0 ? (
+              {(travelForm.DocumentData?.tour_maker || travelForm.DocumentData?.data)?.length > 0 ? (
                 <FileDisplaySection
                   title="Tour Maker Attached Files"
-                  files={travelForm.DocumentData.tour_maker}
+                  files={travelForm.DocumentData?.tour_maker || travelForm.DocumentData?.data}
                   handleWebViewFile={handleWebViewFile}
                   isEditable={false}
                 />
@@ -927,6 +1441,7 @@ const TravelMakerEditScreen = ({ route, navigation }) => {
         </View>
       </Modal>
 
+      {/* Approval View Modal */}
       <Modal animationType="slide" transparent={true} visible={isApprovalModalVisible} onRequestClose={() => setIsApprovalModalVisible(false)}>
         <View style={modalstyles.modalOverlay}>
           <View style={modalstyles.modalContent}>

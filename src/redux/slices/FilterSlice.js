@@ -17,16 +17,25 @@ const travelFilterSlice = createSlice({
   initialState,
   reducers: {
     setFilters: (state, action) => {
-      const payload = action.payload;
-      for (const key in payload) {
-        if (
-          Object.hasOwnProperty.call(state, key) &&
-          Object.hasOwnProperty.call(payload, key)
-        ) {
-          state[key] = payload[key];
+      const payload = action.payload || {};
+
+      // Key normalization map for backend snake_case compatibility
+      const keyMap = {
+        tour_no: "tourNO",
+        request_date: "requestedDate",
+        employee_code: "employeeCode",
+        employee_name: "employeeName",
+        employee_branch: "employeeBranch",
+      };
+
+      Object.keys(payload).forEach((key) => {
+        const targetKey = keyMap[key] || key;
+        if (Object.prototype.hasOwnProperty.call(state, targetKey)) {
+          state[targetKey] = payload[key];
         }
-      }
+      });
     },
+
     clearFilters: () => {
       return initialState;
     },

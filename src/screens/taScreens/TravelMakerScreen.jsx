@@ -34,6 +34,7 @@ import {
   useHolidayCheckMutation,
   useLazyCityListQuery,
   useLazyEmployeeListQuery,
+  useLazyApproverListQuery,
   useLazyBranchListQuery,
 } from "../../redux/rtk_query/apiSlice";
 import {
@@ -53,6 +54,9 @@ import { Environment } from "../../environment/Environment";
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMultipart } from "../../utilities/upload";
 import { pickDocuments } from "../../utilities/filePicker";
+import * as FileSystem from "expo-file-system/legacy";
+import * as IntentLauncher from "expo-intent-launcher";
+import * as WebBrowser from "expo-web-browser";
 
 const formatDate = (date) => {
   if (!date) return "";
@@ -127,7 +131,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
 
   const [triggerPermittedByList, { isFetching: isPermittedByLoading }] = useLazyEmployeeListQuery();
   const [triggerBranchList, { isFetching: isBranchLoading }] = useLazyBranchListQuery();
-  const [triggerApproverEmpList, { isFetching: isApproverEmpLoading }] = useLazyEmployeeListQuery();
+  const [triggerApproverEmpList, { isFetching: isApproverEmpLoading }] = useLazyApproverListQuery();
 
   const scrollViewRef = useRef(null);
   const reasonRef = useRef(null);
@@ -246,11 +250,20 @@ const TravelMakerCreateScreen = ({ navigation }) => {
   const travelForm = useSelector((state) => state.travelMakerFormSlice);
 
   const getBranchId = () => {
+    const rawBranch = travelForm?.empbranchgid;
+
+    if (rawBranch && typeof rawBranch === "object") {
+      return rawBranch.id || rawBranch.branch_id || rawBranch.empbranchgid || 1;
+    }
+
+    if (rawBranch) {
+      return rawBranch;
+    }
+
     return (
-      travelForm?.empbranchgid?.id ||
-      travelForm?.empbranchgid ||
       EmpDetailsData?.employee_branch_id ||
       EmpDetailsData?.branch_id ||
+      EmpDetailsData?.empbranchgid?.id ||
       1
     );
   };
@@ -287,6 +300,64 @@ const TravelMakerCreateScreen = ({ navigation }) => {
       }
     } catch (e) {
       console.log('Camera error', e);
+    }
+  };
+
+  const getMimeType = (fileName = "") => {
+    const ext = fileName.split(".").pop()?.toLowerCase();
+    const mimeTypes = {
+      pdf: "application/pdf",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      gif: "image/gif",
+      webp: "image/webp",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      txt: "text/plain",
+      csv: "text/csv",
+    };
+    return mimeTypes[ext] || "*/*";
+  };
+
+  // 🔑 Fixed File Viewer Handler for FileDisplaySection
+  const handleWebViewFile = async (file) => {
+    try {
+      const fileUrl = file?.uri || file?.url;
+      const fileName = file?.name || file?.file_name || "document";
+
+      if (!fileUrl) {
+        ToastMessage("File URL not available.");
+        return;
+      }
+
+      const mimeType = getMimeType(fileName);
+
+      if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+        await WebBrowser.openBrowserAsync(fileUrl, {
+          controlsColor: CustomColors.appThemeColor,
+          dismissButtonStyle: "close",
+          showTitle: true,
+          enableBarCollapsing: true,
+        });
+        return;
+      }
+
+      if (Platform.OS === "android") {
+        const contentUri = await FileSystem.getContentUriAsync(fileUrl);
+        await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+          data: contentUri,
+          type: mimeType,
+          flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+        });
+      } else if (Platform.OS === "ios") {
+        await WebBrowser.openBrowserAsync(fileUrl);
+      }
+    } catch (error) {
+      console.error("Failed to view file:", error);
+      ToastMessage("No application available to view this file.");
     }
   };
 
@@ -357,6 +428,15 @@ const TravelMakerCreateScreen = ({ navigation }) => {
       }
     }
   };
+  const getDateOnly = (date) => {
+  const d = new Date(date);
+
+  return new Date(
+    d.getUTCFullYear(),
+    d.getUTCMonth(),
+    d.getUTCDate()
+  );
+};
 
   const handleSubmit = async (values) => {
     try {
@@ -408,32 +488,82 @@ const TravelMakerCreateScreen = ({ navigation }) => {
         return;
       }
 
-      for (const detail of values.details || []) {
-        if (!detail.detailStartDate) {
-          ToastMessage("Please Select Tour Itenary Start Date");
-          return;
-        }
-        if (!detail.detailEndDate) {
-          ToastMessage("Please Select Tour Itenary End Date");
-          return;
-        }
-        if (new Date(detail.detailEndDate) > new Date(values.endDate)) {
-          ToastMessage("Itenary End Date should not be greater than Tour End Date");
-          return;
-        }
-        if (!String(detail.startingpoint || "").trim()) {
-          ToastMessage("Please Enter Starting Point");
-          return;
-        }
-        if (!String(detail.placeofvisit || "").trim()) {
-          ToastMessage("Please Enter Place of Visit");
-          return;
-        }
-        if (!String(detail.purposeofvisit || "").trim()) {
-          ToastMessage("Please Enter Purpose of Visit");
-          return;
-        }
-      }
+   for (const detail of values.details || []) {
+  if (!detail.detailStartDate) {
+    ToastMessage("Please Select Tour Itenary Start Date");
+    return;
+  }
+
+  if (!detail.detailEndDate) {
+    ToastMessage("Please Select Tour Itenary End Date");
+    return;
+  }
+
+  console.log(
+    "Detail Start Date:",
+    detail.detailStartDate,
+    "Tour Start Date:",
+    values.startDate
+  );
+
+  console.log(
+    "Detail End Date:",
+    detail.detailEndDate,
+    "Tour End Date:",
+    values.endDate
+  );
+
+  const detailStartDate = getDateOnly(detail.detailStartDate);
+  const tourStartDate = getDateOnly(values.startDate);
+
+  const detailEndDate = getDateOnly(detail.detailEndDate);
+  const tourEndDate = getDateOnly(values.endDate);
+
+  console.log(
+    "Date Only - Detail Start:",
+    detailStartDate,
+    "Tour Start:",
+    tourStartDate
+  );
+
+  console.log(
+    "Date Only - Detail End:",
+    detailEndDate,
+    "Tour End:",
+    tourEndDate
+  );
+
+  // Itinerary start cannot be before tour start
+  if (detailStartDate < tourStartDate) {
+    ToastMessage(
+      "Itenary Start Date should not be earlier than Tour Start Date"
+    );
+    return;
+  }
+
+  // Itinerary end cannot be after tour end
+  if (detailEndDate > tourEndDate) {
+    ToastMessage(
+      "Itenary End Date should not be greater than Tour End Date"
+    );
+    return;
+  }
+
+  if (!String(detail.startingpoint || "").trim()) {
+    ToastMessage("Please Enter Starting Point");
+    return;
+  }
+
+  if (!String(detail.placeofvisit || "").trim()) {
+    ToastMessage("Please Enter Place of Visit");
+    return;
+  }
+
+  if (!String(detail.purposeofvisit || "").trim()) {
+    ToastMessage("Please Enter Purpose of Visit");
+    return;
+  }
+}
 
       if ([1, 2, 4, 5, 6, 7, 8, 11].includes(reasonId)) {
         if (!files || files.length === 0) {
@@ -490,7 +620,8 @@ const TravelMakerCreateScreen = ({ navigation }) => {
         type: file.type || file.mimeType || "image/jpeg",
         size: file.size || 0,
       }));
-
+console.log("Uploading files:", uploadFiles);
+console.log("Submitting data:", data);
       const response = await uploadMultipart({
         url: `${Environment.taServiceUrl}/taserv/tour`,
         data,
@@ -501,7 +632,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
           ...(csrfCookie ? { "X-CSRFCookie": csrfCookie } : {}),
         },
       });
-
+console.log("Upload response:", response);
       if (response?.status === "success" || response?.message === "Success") {
         ToastMessage("Successfully Created");
         navigation.goBack();
@@ -554,6 +685,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
 
   const openPermittedByPicker = () => {
     const branchId = getBranchId();
+    console.log("Opening Permitted By Picker for Branch ID:", branchId);
     if (!branchId) {
       ToastMessage("Please select a Branch first.");
       return;
@@ -580,7 +712,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
       return;
     }
     setApproverEmpPickerVisibility(true);
-    triggerApproverEmpList({ branch: targetBranch, query: "", page: 1 })
+    triggerApproverEmpList({ branch: targetBranch, name: "", page: 1 })
       .unwrap()
       .then((res) => setApproverEmpList(res?.data || []))
       .catch(() => setApproverEmpList([]));
@@ -788,7 +920,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                   <TextInput
                     ref={remarksRef}
                     style={[styles.input, errors.remarks && styles.errorBorder]}
-                    placeholder="Order No or Remarks"
+                   
                     value={values.remarks}
                     onChangeText={handleChange("remarks")}
                     allowFontScaling={false}
@@ -810,7 +942,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                   <Text allowFontScaling={false} style={styles.label}>Approver Branch <Text style={styles.mandatory}>*</Text></Text>
                   <TouchableOpacity onPress={openApproverBranchPicker} style={[styles.pickerInput, errors.approverBranch && styles.errorBorder]} ref={approverBranchRef}>
                     <Text allowFontScaling={false} style={styles.pickerInputText}>
-                      {values.empbranchgid?.name ? `(${values.empbranchgid.code || ''}) ${values.empbranchgid.name}` : "Select Branch"}
+                      {values.empbranchgid?.name ? ` ${values.empbranchgid.name}` : "Select Branch"}
                     </Text>
                     <Ionicons name="chevron-down" size={20} color={CustomColors.mediumGray} style={styles.pickerIcon} />
                   </TouchableOpacity>
@@ -951,6 +1083,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                   />
                 )}
 
+                {/* 🔑 ActionSheet with Search enabled for Reasons */}
                 {isReasonPickerVisible && (
                   <CustomActionSheetPicker
                     pickerStatus={isReasonPickerVisible}
@@ -969,6 +1102,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                   />
                 )}
 
+                {/* 🔑 ActionSheet with Search enabled for Permitted By */}
                 {isPermittedByPickerVisible && (
                   <CustomActionSheetPicker
                     pickerStatus={isPermittedByPickerVisible}
@@ -982,10 +1116,18 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                       setPermittedByPickerVisibility(false);
                     }}
                     selected={{ label: values.permittedby?.full_name || values.permittedby?.name, value: values.permittedby?.id }}
+                    onSearch={(text) => {
+                      const branchId = getBranchId();
+                      triggerPermittedByList({ branch: branchId, query: text, page: 1 })
+                        .unwrap()
+                        .then((res) => setPermittedByList(res?.data || []))
+                        .catch(() => setPermittedByList([]));
+                    }}
                     isLoading={isPermittedByLoading}
                   />
                 )}
 
+                {/* 🔑 ActionSheet with Search enabled for Approver Branch */}
                 {isApproverBranchPickerVisible && (
                   <CustomActionSheetPicker
                     pickerStatus={isApproverBranchPickerVisible}
@@ -999,27 +1141,42 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                       setApproverBranchPickerVisibility(false);
                     }}
                     selected={{ label: values.empbranchgid?.name }}
+                    onSearch={(text) => {
+                      triggerBranchList({ name: text, page: 1 })
+                        .unwrap()
+                        .then((res) => setApproverBranchList(res?.data || []))
+                        .catch(() => setApproverBranchList([]));
+                    }}
                     isLoading={isBranchLoading}
                   />
                 )}
 
+                {/* 🔑 ActionSheet with Search enabled for Approver Employee */}
                 {isApproverEmpPickerVisible && (
                   <CustomActionSheetPicker
                     pickerStatus={isApproverEmpPickerVisible}
                     setPickerStatus={setApproverEmpPickerVisibility}
                     title="Select Approver Employee"
-                    optionsData={approverEmpList.map((emp) => ({ label: String(emp.full_name || emp.name || emp.employee_name), value: emp.id || emp.employeegid }))}
+                    optionsData={approverEmpList.map((emp) => ({ label: `(${emp.code || ''}) ${emp.full_name || emp.name || emp.employee_name}`, value: emp.id || emp.employeegid }))}
                     RenderItem={RenderDropdownItem}
                     onPress={(selectedOption) => {
                       setFieldValue("approval", { id: selectedOption.value, full_name: selectedOption.label });
                       setErrors((prev) => ({ ...prev, approval: false }));
                       setApproverEmpPickerVisibility(false);
                     }}
-                    selected={{ label: values.approval?.full_name || values.approval?.name, value: values.approval?.id }}
+                    selected={{ label:  `(${values.approval?.code || ''})${values.approval?.full_name || values.approval?.name}`, value: values.approval?.id }}
+                    onSearch={(text) => {
+                      const targetBranch = values.empbranchgid?.id || getBranchId();
+                      triggerApproverEmpList({ branch: targetBranch, name: text, page: 1 })
+                        .unwrap()
+                        .then((res) => setApproverEmpList(res?.data || []))
+                        .catch(() => setApproverEmpList([]));
+                    }}
                     isLoading={isApproverEmpLoading}
                   />
                 )}
 
+                {/* 🔑 ActionSheet with Search enabled for City / Debit Branch */}
                 {isCityPickerVisible && (
                   <CustomActionSheetPicker
                     pickerStatus={isCityPickerVisible}
@@ -1032,6 +1189,7 @@ const TravelMakerCreateScreen = ({ navigation }) => {
                       setCityPickerVisibility(false);
                     }}
                     selected={{ label: values.debit_branch?.name }}
+                    onSearch={handleSearchCity}
                     isLoading={isLoadingCity}
                   />
                 )}

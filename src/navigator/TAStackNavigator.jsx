@@ -1,9 +1,11 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+
+// Import all screens carefully
 import DashboardScreen from "../screens/taScreens/HomeScreen";
 import TravelMakerSummaryScreen from "../screens/taScreens/travelMakerSummary";
 import TravelMakerCreateScreen from "../screens/taScreens/TravelMakerScreen";
-import TravelMakerEditScreen from "../screens/taScreens/TravelMakerEditScreen"; // 🔑 FIXED: Default import with exact component name
+import TravelMakerEditScreen from "../screens/taScreens/TravelMakerEditScreen";
 import TravelApproverSummaryScreen from "../screens/taScreens/TravelApproverSummary";
 import AdminSummaryScreen from "../screens/taScreens/AdminSummary";
 import BookingScreen from "../screens/taScreens/BookingScreen";
@@ -13,6 +15,11 @@ import DailyReimbursementScreen from "../screens/taScreens/DailyReimbursementScr
 import LodgingScreen from "../screens/taScreens/LodgingScreen";
 import AssociatedExpenseScreen from "../screens/taScreens/AssociatedExpenseScreen";
 import TravellingExpensesScreen from "../screens/taScreens/TravellingExpenses";
+import AdvanceMakerSummaryScreen from "../screens/taScreens/AdvanceMakerSummaryScreen";
+import AdvanceRequestCreateScreen from "../screens/taScreens/AdvanceRequestCreateScreen";
+import AdvanceMakerEditScreen from "../screens/taScreens/AdvanceMakerEditScreen"; // Reusing the same component for editing
+import AdvanceApproverSummaryScreen from "../screens/taScreens/AdvanceApprovalSummaryScreen";
+import AdvanceApprovalViewScreen from "../screens/taScreens/AdvanceApproviewScreen";
 import FuelAllowanceSummary from "../screens/taScreens/FuelAllowanceSummary";
 import FuelAllowanceCreation from "../screens/taScreens/FuelAllowanceCreation";
 import DateRelaxationSummary from "../screens/taScreens/DateRelaxationSummary";
@@ -65,7 +72,6 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, ta
         options={{ headerBackTitleVisible: false }}
       />
 
-      {/* 🔑 FIXED: Component properly assigned */}
       <Stack.Screen
         name="travel_edit_screen"
         component={TravelMakerEditScreen}
@@ -77,11 +83,38 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, ta
         component={TravelApproverSummaryScreen}
         options={{ headerBackTitleVisible: false }}
       />
+
+      <Stack.Screen
+        name="advance_maker_summary"
+        component={AdvanceMakerSummaryScreen}
+        options={{ headerBackTitleVisible: false }}
+      />
+<Stack.Screen
+  name="advance_request_create"
+  component={AdvanceRequestCreateScreen}
+  options={{ headerBackTitleVisible: false }}
+/>
+<Stack.Screen
+  name="advance_maker_edit"
+  component={AdvanceMakerEditScreen}
+  options={{ headerBackTitleVisible: false }}
+/>
+<Stack.Screen
+  name="advance_approver_summary"
+  component={AdvanceApproverSummaryScreen}
+  options={{ headerBackTitleVisible: false }}
+/>
+<Stack.Screen
+  name="advance_approval_view"
+  component={AdvanceApprovalViewScreen}
+  options={{ headerBackTitleVisible: false }}
+/>
       <Stack.Screen
         name="admin_summary"
         component={AdminSummaryScreen}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="ExpenseMaker"
         component={ExpenseMakerScreen}
@@ -93,21 +126,25 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, ta
         component={ExpenseApprovalList}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="fuel_allowance_maker_summary"
         component={FuelAllowanceSummary}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="fuel_allowance_creation"
         component={FuelAllowanceCreation}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="fuellistall"
         component={FuelListSummary}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="date_relaxation"
         component={DateRelaxationSummary}
@@ -119,26 +156,31 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, ta
         component={MessageScreen}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name="chat"
         component={ChatBubbleScreen}
         options={{ headerShown: false }}
       />
+
       <Stack.Screen
         name="ExpenseDetail"
         component={ExpenseDetail}
         options={{ headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name={SCREEN_NAMES.LODGING}
         component={LodgingScreen}
         options={{ title: "Lodging", headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name={SCREEN_NAMES.LOCAL_CONVEYANCE}
         component={LocalConveyanceScreen}
         options={{ title: "Local Conveyance", headerBackTitleVisible: false }}
       />
+
       <Stack.Screen
         name={SCREEN_NAMES.TRAVELLING_EXPENSES}
         component={TravellingExpensesScreen}
@@ -147,6 +189,7 @@ const TAStackNavigator = ({ route, openDrawer, selectedModule, permittedList, ta
           headerBackTitleVisible: false,
         }}
       />
+
       <Stack.Screen
         name={SCREEN_NAMES.DAILY_REIMBURSEMENT}
         component={DailyReimbursementScreen}

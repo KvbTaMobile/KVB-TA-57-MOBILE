@@ -12,52 +12,95 @@ import { getCustomColors } from "../../styles/CustomColors";
 import { Fonts } from "../../styles/Fonts";
 import ToastMessage from "../../TaComponents/toast/ToastMessage";
 
-const TravelMakerSummaryCard = ({ data, onPress }) => {
+// 🔑 Separate Helper Functions
+const getTourStatusText = (statusId, tourStatusStr) => {
+  if (typeof tourStatusStr === "string" && tourStatusStr.trim() !== "") {
+    const upper = tourStatusStr.toUpperCase();
+    if (upper === "APPROVED") return "Tour Request Approved";
+    if (upper === "REJECTED") return "Tour Request Rejected";
+    if (upper === "RETURNED" || upper === "RETURN") return "Tour Request Returned From Approver";
+    if (upper === "FORWARDED") return "Tour Request Forwarded";
+    if (upper === "PENDING") return "Tour Request Submitted To Approver";
+  }
+
+  switch (Number(statusId)) {
+    case 1:
+    case 2:
+      return "Tour Request Submitted To Approver";
+    case 3:
+      return "Tour Request Approved";
+    case 4:
+      return "Tour Request Rejected";
+    case 5:
+      return "Tour Request Returned From Approver";
+    case 6:
+      return "Tour Request Forwarded";
+    case 7:
+      return "Tour Cancel Requested";
+    case 8:
+      return "Tour Cancel Approved";
+    default:
+      return "Submitted";
+  }
+};
+
+const getAdvanceStatusText = (advanceStatusId, advanceStatusStr) => {
+  if (typeof advanceStatusStr === "string" && advanceStatusStr.trim() !== "") {
+    const upper = advanceStatusStr.toUpperCase();
+    if (upper === "PENDING") return "Tour Advance Pending";
+    if (upper === "APPROVED") return "Tour Advance Approved";
+    if (upper === "REJECTED") return "Tour Advance Rejected";
+    if (upper === "RETURNED" || upper === "RETURN") return "Tour Advance Returned";
+    if (upper === "DEFAULT") return "Tour Advance Pending";
+  }
+
+  switch (Number(advanceStatusId)) {
+    case 1:
+      return "Tour Advance Submitted";
+    case 2:
+      return "Tour Advance Pending";
+    case 3:
+      return "Tour Advance Approved";
+    case 4:
+      return "Tour Advance Rejected";
+    case 5:
+      return "Tour Advance Returned";
+    case 15:
+    case 17:
+      return "Tour Advance Cancel Submitted";
+    default:
+      return "Tour Advance Pending";
+  }
+};
+
+const TravelMakerSummaryCard = ({ data, onPress, isAdvance }) => {
   const isDark = useSelector((state) => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
 
-  // Exact Angular-equivalent tour_status_id string labels
-  const getStatusText = (statusId) => {
-    switch (Number(statusId)) {
-      case 1:
-      case 2:
-        return "Tour Request Submitted To Approver";
-      case 3:
-        return "Tour Request Approved";
-      case 4:
-        return "Tour Request Rejected";
-      case 5:
-        return "Tour Request Returned From Approver";
-      case 6:
-        return "Tour Request Forwarded";
-      case 7:
-        return "Tour Cancel Requested";
-      case 8:
-        return "Tour Cancel Approved";
-      default:
-        return data.tour_status_text || data.status_text || "Submitted";
-    }
-  };
+  // Check if item is from Advance module
+  const isAdvanceType =
+    isAdvance ||
+    data?.from === "ADVANCE_CHECKER" ||
+    data?.from === "ADVANCE_MAKER" ||
+    (data?.advance_status !== undefined && data?.advance_status !== "DEFAULT");
 
-  // Exact Angular status colors
-  const getStatusColor = (statusId) => {
-    switch (Number(statusId)) {
-      case 3:
-      case 8:
-        return CustomColors.statusGreen;
-      case 4:
-        return CustomColors.statusRed;
-      case 5:
-        return CustomColors.statusOrange;
-      case 1:
-      case 2:
-      case 7:
-        return CustomColors.statusYellow || CustomColors.statusOrange;
-      case 6:
-        return CustomColors.primaryBlue;
-      default:
-        return CustomColors.statusBlue;
+  // 🔑 Call Separate Functions
+  const displayStatusText = isAdvanceType
+    ? getAdvanceStatusText(data?.advance_status_id ?? data?.status, data?.advance_status || data?.status_name)
+    : getTourStatusText(data?.tour_status_id ?? data?.status, data?.tour_status || data?.status_name);
+
+  // Color Mapping
+  const getStatusColor = () => {
+    const textUpper = String(displayStatusText).toUpperCase();
+
+    if (textUpper.includes("APPROVED")) return CustomColors.statusGreen;
+    if (textUpper.includes("REJECTED")) return CustomColors.statusRed;
+    if (textUpper.includes("RETURN")) return CustomColors.statusOrange;
+    if (textUpper.includes("PENDING") || textUpper.includes("SUBMITTED")) {
+      return CustomColors.statusYellow || CustomColors.statusOrange;
     }
+    if (textUpper.includes("FORWARDED")) return CustomColors.primaryBlue;
+    return CustomColors.statusBlue;
   };
 
   const DetailRow = ({ label, value, highlighted, icon }) => (
@@ -90,7 +133,6 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
     : null;
 
   const tourNumberDisplay = data.requestno || data.id || "NEW";
-  const statusId = data.tour_status_id || data.status;
 
   const copyTourNoToClipboard = async (tourNo) => {
     if (tourNo) {
@@ -142,9 +184,7 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
       fontFamily: Fonts.bold,
       fontSize: moderateScale(17),
       color: CustomColors.appThemeColor,
-      marginRight: horizontalScale(-1),
-      
-      
+      marginRight: horizontalScale(4),
     },
     statusText: {
       fontFamily: Fonts.semiBold,
@@ -230,19 +270,33 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
           allowFontScaling={false}
           style={[
             styles.statusText,
-            { backgroundColor: getStatusColor(statusId) },
+            { backgroundColor: getStatusColor() },
           ]}
           numberOfLines={2}
         >
-          {getStatusText(statusId)}
+          {displayStatusText}
         </Text>
       </View>
 
       {/* Table Details */}
       <View style={styles.detailsSection}>
+        {data.employee_name || data.full_name ? (
+          <DetailRow
+            label="Employee"
+            value={`${data.employee_name || data.full_name} (${data.employee_code || "-"})`}
+            icon={
+              <MaterialIcons
+                name="person"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+
         {data.requestdate ? (
           <DetailRow
-            label="Tour Requested Date"
+            label="Requested Date"
             value={data.requestdate}
             icon={
               <MaterialIcons
@@ -253,6 +307,7 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
             }
           />
         ) : null}
+
         {data.startdate ? (
           <DetailRow
             label="From Date"
@@ -266,6 +321,7 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
             }
           />
         ) : null}
+
         {data.enddate ? (
           <DetailRow
             label="To Date"
@@ -279,6 +335,7 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
             }
           />
         ) : null}
+
         {data.reason ? (
           <DetailRow
             label="Reason"
@@ -292,6 +349,22 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
             }
           />
         ) : null}
+
+        {isAdvanceType && (data.requested_amount !== undefined || data.reqamount !== undefined) ? (
+          <DetailRow
+            label="Requested Amount"
+            value={`₹${Number(data.requested_amount ?? data.reqamount ?? 0).toLocaleString()}`}
+            highlighted
+            icon={
+              <MaterialIcons
+                name="attach-money"
+                size={16}
+                color={CustomColors.textGray}
+              />
+            }
+          />
+        ) : null}
+
         {displayBranchName ? (
           <DetailRow
             label="Branch"
@@ -305,6 +378,7 @@ const TravelMakerSummaryCard = ({ data, onPress }) => {
             }
           />
         ) : null}
+
         {displayApproverName ? (
           <DetailRow
             label="Approver"
