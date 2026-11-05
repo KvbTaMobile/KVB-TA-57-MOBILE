@@ -62,6 +62,7 @@ const SafeArea =
 
 // ── Password encryption — mirrors Angular web's encryptPassword_new ─────────
 const cleanPublicKey = (pem) => {
+  if (!pem || typeof pem !== "string") return "";
   return pem
     .replace("-----BEGIN PUBLIC KEY-----", "")
     .replace("-----END PUBLIC KEY-----", "")
@@ -125,8 +126,8 @@ const LoginScreen = () => {
   const dispatch = useDispatch();
   const showCaptcha = Environment.showCaptcha;
   const [form, setForm] = useState({
-    username: "sudhakark",
-    password: "VS2313",
+    username: "",
+    password: "",
     // entity_id: 1,
     // captcha: "",
   });
@@ -140,7 +141,11 @@ const LoginScreen = () => {
   const publicKey = publicKeyData?.public_key;
 
   useEffect(() => {
-    getPublicKey();
+    getPublicKey()
+      .unwrap()
+      .catch((err) => {
+        console.log("Failed to load public key on mount:", err);
+      });
   }, []);
 
   const [login, { isLoading }] = useLoginMutation();
@@ -188,12 +193,19 @@ const LoginScreen = () => {
 
   useEffect(() => {
     if (userModulesData?.data?.length > 0) {
-      const filtered = userModulesData.data.filter(
-        (m) => m.name === "TA e-Claim"
-      );
-      dispatch(setUserModules(filtered));
+      const filtered = userModulesData.data.filter((m) => {
+        const n = (m.name || "").toLowerCase().trim();
+        return (
+          n === "ta e-claim" ||
+          n === "ta eclaim" ||
+          n === "ta" ||
+          n.includes("ta") ||
+          n.includes("claim")
+        );
+      });
+      dispatch(setUserModules(filtered.length > 0 ? filtered : userModulesData.data));
 
-      const hasPermission = filtered.length > 0;
+      const hasPermission = filtered.length > 0 || userModulesData.data.length > 0;
       if (hasPermission) {
         navigation.replace("main");
         Toaster("Login successful", "");
@@ -231,16 +243,28 @@ const LoginScreen = () => {
     const password = form.password?.trim();
 
     if (!username || !password) {
+      triggerShake();
       return Toaster("Enter username & password", "");
     }
 
-    if (!publicKey) {
-      return Toaster("Public key not loaded yet. Please try again.", "");
+    let activeKey = publicKey;
+    if (!activeKey) {
+      try {
+        const res = await getPublicKey().unwrap();
+        activeKey = res?.public_key;
+      } catch (keyErr) {
+        console.error("Public key fetch error:", keyErr);
+        return Toaster("Unable to connect to server. Please check internet connection.", "");
+      }
+    }
+
+    if (!activeKey) {
+      return Toaster("Security key unavailable. Please try again.", "");
     }
 
     let encryptedPassword;
     try {
-      encryptedPassword = encryptPasswordNew(password, publicKey);
+      encryptedPassword = encryptPasswordNew(password, activeKey);
     } catch (e) {
       console.error("Password encryption failed:", e);
       return Toaster("Encryption error. Please try again.", "");
@@ -261,11 +285,41 @@ const LoginScreen = () => {
       await storeAsyncData("userid", String(response.user_id));
 
       dispatch(setUser(response));
-      dispatch(apiSlice.util.resetApiState());
-      // registerPushSafely(response.user_id);
-      getUserModule();
+
+      // Attempt to load user modules
+      let modulesList = [];
+      try {
+        const userModulesRes = await getUserModule().unwrap();
+        modulesList = userModulesRes?.data || [];
+      } catch (modErr) {
+        console.log("getUserModule error:", modErr);
+      }
+
+      if (modulesList.length > 0) {
+        const filtered = modulesList.filter((m) => {
+          const n = (m.name || "").toLowerCase().trim();
+          return (
+            n === "ta e-claim" ||
+            n === "ta eclaim" ||
+            n === "ta" ||
+            n.includes("ta") ||
+            n.includes("claim")
+          );
+        });
+        dispatch(setUserModules(filtered.length > 0 ? filtered : modulesList));
+      }
+
+      Toaster("Login successful", "");
+      navigation.replace("main");
     } catch (err) {
-      Toaster("Invalid credentials", "");
+      console.error("Login error:", err);
+      const errMsg =
+        err?.data?.description ||
+        err?.data?.message ||
+        err?.data?.detail ||
+        err?.error ||
+        "Invalid credentials";
+      Toaster(typeof errMsg === "string" ? errMsg : "Invalid credentials", "");
     }
   };
 
@@ -396,7 +450,7 @@ const LoginScreen = () => {
     },
   });
 
-  const loginDisabled = isLoading || isPublicKeyLoading || !publicKey;
+  const isSubmitting = isLoading || isUserModulesDataLoading;
 
   return (
     <SafeArea style={{ flex: 1, backgroundColor: CustomColors.appThemeColor }}>
@@ -504,7 +558,7 @@ const LoginScreen = () => {
                   </View>
 
                   {/* LOGIN BUTTON */}
-                  <TouchableOpacity disabled={loginDisabled} onPress={handleLogin}>
+                  <TouchableOpacity disabled={isSubmitting} onPress={handleLogin}>
                     <Animated.View
                       style={{
                         transform: [
@@ -524,10 +578,10 @@ const LoginScreen = () => {
                         ]}
                         style={[
                           styles.loginButton,
-                          loginDisabled && styles.loginButtonDisabled,
+                          isSubmitting && styles.loginButtonDisabled,
                         ]}
                       >
-                        {isLoading || isUserModulesDataLoading || isPublicKeyLoading ? (
+                        {isSubmitting || isPublicKeyLoading ? (
                           <ActivityIndicator
                             color={CustomColors.backgroundWhite}
                           />

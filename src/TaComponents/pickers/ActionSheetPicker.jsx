@@ -15,6 +15,11 @@ import {
 import { useSelector } from "react-redux";
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getCustomColors } from "../../styles/CustomColors";
+import {
+  horizontalScale,
+  verticalScale,
+  moderateScale,
+} from "../../styles/Metrics";
 
 const CustomActionSheetPicker = ({
   pickerStatus,
@@ -152,22 +157,50 @@ const CustomActionSheetPicker = ({
             )}
 
             <FlatList
-              data={optionsData}
+              data={optionsData || []}
               keyExtractor={(item, index) => index.toString()}
+              nestedScrollEnabled={true}
               onEndReachedThreshold={0.8}
               onEndReached={() => {
-                if (hasMoreData && !isFetchingMore) {
+                if (hasMoreData && !isFetchingMore && typeof onEndReached === 'function') {
                   onEndReached();
                 }
               }}
-              renderItem={({ item }) => (
-                <RenderItem
-                  options={item}
-                  onPress={onPress}
-                  setPickerStatus={setPickerStatus}
-                  selected={selected}
-                />
-              )}
+              renderItem={({ item }) => {
+                if (typeof RenderItem === 'function') {
+                  return (
+                    <RenderItem
+                      options={item}
+                      onPress={onPress}
+                      setPickerStatus={setPickerStatus}
+                      selected={selected}
+                    />
+                  );
+                }
+                const isSelected = selected && (selected.value === item.value || selected === item.value);
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (typeof onPress === 'function') onPress(item);
+                      if (typeof setPickerStatus === 'function') setPickerStatus(false);
+                    }}
+                    style={{
+                      paddingVertical: verticalScale(12),
+                      paddingHorizontal: horizontalScale(16),
+                      borderBottomWidth: StyleSheet.hairlineWidth,
+                      borderBottomColor: CustomColors.borderColor,
+                      backgroundColor: isSelected ? (CustomColors.primaryLight || '#e0f2fe') : 'transparent',
+                    }}
+                  >
+                    <Text allowFontScaling={false} style={{
+                      fontSize: moderateScale(14),
+                      color: isSelected ? (CustomColors.primaryBlue || CustomColors.textBlack) : CustomColors.textBlack,
+                    }}>
+                      {item?.label || item?.name || String(item)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
               ListEmptyComponent={() => (
                 !isLoading && <Text allowFontScaling={false} style={styles.emptyListText}>No items found.</Text>
               )}

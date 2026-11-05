@@ -43,7 +43,8 @@ import {
   useTourForwardMutation,
   useTourCancelMutation,
   apiSlice,
-  useLazyTourReasonListQuery
+  useLazyTourReasonListQuery,
+  useLazyTravelMakerSummaryQuery,
 } from "../../redux/rtk_query/apiSlice";
 import {
   updateField,
@@ -88,40 +89,191 @@ const diffInDays = (start, end) => {
 const isValidId = (v) =>
   v !== undefined && v !== null && v !== "" && v !== "undefined" && v !== "null";
 
+const parseDateString = (dateString) => {
+  if (!dateString) return null;
+  if (dateString instanceof Date && !isNaN(dateString.getTime())) {
+    return dateString;
+  }
+  const parsed = new Date(dateString);
+  if (!isNaN(parsed.getTime())) {
+    return parsed;
+  }
+  if (typeof dateString === "string" && dateString.includes("-")) {
+    const parts = dateString.split("-");
+    if (parts.length === 3) {
+      const monthMap = {
+        jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+        jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+      };
+      const mStr = parts[1].toLowerCase().slice(0, 3);
+      if (monthMap[mStr] !== undefined) {
+        const d = new Date(Number(parts[2]), monthMap[mStr], Number(parts[0]));
+        if (!isNaN(d.getTime())) return d;
+      }
+      if (parts[0].length === 4) {
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) return d;
+      } else {
+        const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+  }
+  return null;
+};
+
 const normalizePerson = (raw) => {
   if (!raw) return null;
   if (typeof raw === "number" || typeof raw === "string") {
-    return isValidId(raw) ? { id: raw, code: "", full_name: "" } : null;
+    return isValidId(raw)
+      ? {
+          id: typeof raw === "number" ? raw : null,
+          code: "",
+          full_name: typeof raw === "string" ? raw : "",
+        }
+      : null;
   }
   const id = raw.id ?? raw.employee_id ?? raw.emp_id ?? null;
-  if (!isValidId(id)) return null;
+  const fullName =
+    raw.full_name ??
+    raw.name ??
+    raw.employe_name ??
+    raw.employee_name ??
+    raw.approvedby ??
+    "";
+  if (!isValidId(id) && !fullName) return null;
   return {
-    id,
-    code: raw.code ?? raw.emp_code ?? "",
-    full_name: raw.full_name ?? raw.name ?? raw.employe_name ?? raw.employee_name ?? "",
+    id: id || null,
+    code: raw.code ?? raw.emp_code ?? raw.approver_code ?? "",
+    full_name: fullName,
   };
 };
 
 const normalizeBranch = (raw) => {
   if (!raw) return null;
   if (typeof raw === "number" || typeof raw === "string") {
-    return isValidId(raw) ? { id: raw, code: "", name: "" } : null;
+    return isValidId(raw)
+      ? {
+          id: typeof raw === "number" ? raw : null,
+          code: "",
+          name: typeof raw === "string" ? raw : "",
+        }
+      : null;
   }
   const id = raw.id ?? raw.branch_id ?? null;
-  if (!isValidId(id)) return null;
+  const name = raw.name ?? raw.branch_name ?? raw.branch ?? "";
+  if (!isValidId(id) && !name) return null;
   return {
-    id,
+    id: id || null,
     code: raw.code ?? raw.branch_code ?? "",
-    name: raw.name ?? raw.branch_name ?? "",
+    name,
+  };
+};
+
+const buildTourFormPayload = (data) => {
+  if (!data) return {};
+
+  const startDateISO = parseDateString(data.startdate || data.startDate)?.toISOString();
+  const endDateISO = parseDateString(data.enddate || data.endDate)?.toISOString();
+  const reqDateISO =
+    parseDateString(data.requestdate || data.requestDate)?.toISOString() || new Date().toISOString();
+
+  const permittedByNormalized =
+    normalizePerson(data.permitted_by_data) ||
+    normalizePerson(data.permittedby) || {
+      id: data.permittedby_id,
+      code: data.permittedby_code || "",
+      full_name: typeof data.permittedby === "string" ? data.permittedby : data.permitted_by || "",
+    };
+
+  const approverNormalized =
+    normalizePerson(data.approver_data) ||
+    normalizePerson(data.approver_branch_data) ||
+    normalizePerson(data.approval) || {
+      id: data.approver_id || data.approvedby_id,
+      code: data.approver_code || "",
+      full_name:
+        typeof data.approvedby === "string"
+          ? data.approvedby
+          : typeof data.approval === "string"
+          ? data.approval
+          : data.approver_name || "",
+    };
+
+  const branchNormalized =
+    normalizeBranch(data.branch_data_maker) ||
+    normalizeBranch(data.empbranchgid) ||
+    normalizeBranch(data.branch_data) || {
+      id: data.empbranchgid || data.branch_id || data.branchid,
+      code: data.branch_code || "",
+      name:
+        data.branch_name ||
+        (typeof data.branch === "string" ? data.branch : "") ||
+        "",
+    };
+
+  const rawReason = data.reason_data || data.reason;
+  const reasonNormalized =
+    typeof rawReason === "object" && rawReason !== null
+      ? { id: rawReason.id, name: rawReason.name || rawReason.text || "" }
+      : typeof rawReason === "string" && rawReason.trim() !== ""
+      ? { id: data.reason_id || null, name: rawReason.trim() }
+      : { id: data.reason_id, name: data.reason_name || data.reason || "" };
+
+  const rawDetails = Array.isArray(data.detail)
+    ? data.detail
+    : Array.isArray(data.details)
+    ? data.details
+    : [];
+
+  return {
+    id: data.id || data.tourid || data.tour_id || data.tourgid,
+    tourNo: data.requestno || data.tourNo || data.reqtourno || data.id,
+    requestDate: reqDateISO,
+    empName: data.employee_name || data.empName || "",
+    empCode: data.employee_code || data.empCode || "",
+    empDesign: data.empdesignation || data.empDesign || "",
+    empGrade: data.empgrade || data.empGrade || "",
+    reason: reasonNormalized,
+    startDate: startDateISO,
+    endDate: endDateISO,
+    durationDays: data.durationdays ?? data.durationDays ?? diffInDays(startDateISO, endDateISO),
+    remarks: data.ordernoremarks || data.remarks || "",
+    permittedby: permittedByNormalized,
+    empbranchgid: branchNormalized,
+    approval: approverNormalized,
+    transfer_on_promotion: data.transfer_on_promotion?.toString() || "0",
+    quantum_of_funds: data.quantum_of_funds || "",
+    opening_balance: data.opening_balance || "",
+    debit_branch: data.debit_branch || "",
+    approverRemarks: data.approver_comment || data.approverRemarks || "",
+    details: rawDetails.map((item) => ({
+      ...item,
+      detailStartDate: parseDateString(item.startdate || item.detailStartDate)?.toISOString(),
+      detailEndDate: parseDateString(item.enddate || item.detailEndDate)?.toISOString(),
+      startingpoint: item.startingpoint || "",
+      placeofvisit: item.placeofvisit || "",
+      purposeofvisit: item.purposeofvisit || "",
+    })),
   };
 };
 
 const TravelMakerEditScreen = ({ route, navigation }) => {
   const tourDataParams = route?.params?.tourDataParams;
-  const tour_id = route?.params?.tour_id || tourDataParams?.id;
   const from = route?.params?.from || "MAKER";
+  const isViewMode = from === "VIEW" || from === "View";
+  const rawTourId =
+    route?.params?.tour_id ||
+    route?.params?.tourId ||
+    route?.params?.id ||
+    tourDataParams?.tour_id ||
+    tourDataParams?.tourgid ||
+    tourDataParams?.tourid ||
+    tourDataParams?.id;
+  const [tour_id, setTourId] = useState(rawTourId);
 const Id = route?.params?.id 
 console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
+
   const isMaker = from === "MAKER";
   const [isChecker, setIsChecker] = useState(from === "CHECKER");
   console.log("isMaker:", isMaker, "isChecker:", isChecker, "from:", from);
@@ -136,7 +288,7 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   const [isApprovalModalVisible, setIsApprovalModalVisible] = useState(false);
   const [isAttachmentModalVisible, setIsAttachmentModalVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isEditable, setIsEditable] = useState(true);
+  const [isEditable, setIsEditable] = useState(!isViewMode);
 
   // Date Picker state
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
@@ -161,7 +313,7 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
   const [triggerApprovalFlow] = useLazyGetApprovalFlowQuery();
   const [triggerTourDataGet, { isLoading: isLoadingTourData, data: tourData }] =
     useLazyTourDataGetQuery();
-    console.log("Tour Data:", tourData);
+  const [triggerMakerSummary] = useLazyTravelMakerSummaryQuery();
   const [triggerEmployeeList, { isFetching: isEmpLoading }] = useLazyEmployeeListQuery();
   const [triggerBranchList, { isFetching: isBranchLoading }] = useLazyBranchListQuery();
 
@@ -308,8 +460,9 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
 
   const HeaderRight = useCallback(
     () => (
-      <View style={styles.headerRightContainer}>
+      <View style={{ marginRight: horizontalScale(4) }}>
         <TouchableOpacity
+          activeOpacity={0.8}
           onPress={async () => {
             setIsApprovalModalVisible(true);
             dispatch(setApprovalFlow(null));
@@ -322,25 +475,81 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
               dispatch(setIsApprovalFlowLoading(false));
             }
           }}
-          style={[styles.addIconContainer, { marginLeft: horizontalScale(10) }]}
+          style={{
+            width: moderateScale(38),
+            height: moderateScale(38),
+            borderRadius: moderateScale(19),
+            backgroundColor: "rgba(255, 255, 255, 0.16)",
+            borderWidth: 1,
+            borderColor: "rgba(255, 255, 255, 0.28)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
         >
-          <Ionicons name="eye" size={moderateScale(25)} color={CustomColors.white} />
+          <Ionicons name="eye-outline" size={moderateScale(20)} color={CustomColors.white} />
         </TouchableOpacity>
       </View>
     ),
-    [tour_id, dispatch, triggerApprovalFlow, CustomColors.white, styles]
+    [tour_id, dispatch, triggerApprovalFlow, CustomColors.white]
   );
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: "eClaim Tour",
+      title: isViewMode ? "eClaim Tour Details" : "eClaim Tour",
       headerStyle: { backgroundColor: CustomColors.appThemeColor },
       headerShown: true,
       headerTintColor: CustomColors.textWhite,
+      headerTitleStyle: {
+        fontSize: moderateScale(18),
+        fontFamily: Fonts.bold,
+        color: CustomColors.textWhite,
+        letterSpacing: 0.3,
+      },
+      headerShadowVisible: false,
       headerRight: HeaderRight,
     });
-  }, [navigation, HeaderRight, CustomColors.appThemeColor, CustomColors.textWhite]);
+  }, [navigation, HeaderRight, CustomColors.appThemeColor, CustomColors.textWhite, isViewMode]);
 
+  // Immediately populate form from route parameters if available
+  useEffect(() => {
+    if (
+      tourDataParams &&
+      (tourDataParams.requestno ||
+        tourDataParams.employee_name ||
+        tourDataParams.startdate ||
+        tourDataParams.id)
+    ) {
+      dispatch(updateField(buildTourFormPayload(tourDataParams)));
+      if (isViewMode) {
+        setIsEditable(false);
+      }
+    }
+  }, [tourDataParams, isViewMode, dispatch]);
+
+  // If tour_id is a tour request number (e.g. "TR..."), resolve numeric ID
+  useEffect(() => {
+    if (tour_id && typeof tour_id === "string" && !/^\d+$/.test(tour_id)) {
+      triggerMakerSummary({ tour_no: tour_id })
+        .unwrap()
+        .then((res) => {
+          const list = Array.isArray(res?.data) ? res.data : [];
+          if (list.length > 0 && list[0]?.id) {
+            setTourId(list[0].id);
+          }
+        })
+        .catch((e) => console.log("Failed to resolve numeric tour_id:", e));
+    }
+  }, [tour_id, triggerMakerSummary]);
+
+  // Cleanup form state ONLY on screen unmount
+  useEffect(() => {
+    return () => {
+      dispatch(resetForm());
+      dispatch(clearDropdownData());
+    };
+  }, [dispatch]);
+
+  // Fetch tour data, approval flow, and documents
   useEffect(() => {
     if (!isValidId(tour_id)) return;
 
@@ -382,12 +591,7 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
     };
 
     fetchDocumentsDirect();
-
-    return () => {
-      dispatch(resetForm());
-      dispatch(clearDropdownData());
-    };
-  }, [tour_id, dispatch, triggerTourDataGet, triggerApprovalFlow, authToken, csrfToken, csrfCookie]);
+  }, [tour_id, triggerTourDataGet, triggerApprovalFlow, authToken]);
 
   useEffect(() => {
     if (tourData) {
@@ -398,73 +602,23 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
         setIsChecker(true);
       }
 
-      const canEdit =  from === "MAKER"  && tourStatus !== "APPROVED" && tourStatus !== "REJECTED" && tourStatus === "PENDING" && tourStatus !== "RETURNED" && tourStatus !== "CANCELLED";
-      setIsEditable(canEdit);
+      if (isViewMode) {
+        setIsEditable(false);
+      } else {
+        const canEdit =
+          from === "MAKER" &&
+          tourStatus !== "APPROVED" &&
+          tourStatus !== "REJECTED" &&
+          tourStatus === "PENDING" &&
+          tourStatus !== "RETURNED" &&
+          tourStatus !== "CANCELLED";
+        setIsEditable(canEdit);
+      }
 
-      const parseDateString = (dateString) => {
-        if (!dateString) return null;
-        const [day, monthStr, year] = dateString.split("-");
-        const monthMap = {
-          Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-          Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
-        };
-        const month = monthMap[monthStr];
-        return month !== undefined ? new Date(year, month, day) : null;
-      };
-
-      const startDateISO = parseDateString(tourData.startdate)?.toISOString();
-      const endDateISO = parseDateString(tourData.enddate)?.toISOString();
-
-      const permittedByNormalized = normalizePerson(tourData.permitted_by_data) || {
-        id: tourData.permittedby_id,
-        code: tourData.permittedby_code,
-        full_name: tourData.permittedby,
-      };
-
-      const approverNormalized = normalizePerson(tourData.approver_data) || {
-        id: tourData.approver_branch_data?.id,
-        code: tourData.approver_branch_data?.code,
-        full_name: tourData.approver_branch_data?.full_name,
-      };
-
-      const branchNormalized = normalizeBranch(tourData.branch_data_maker) || {
-        id: tourData.empbranchgid,
-        code: tourData.branch_code,
-        name: tourData.branch_name,
-      };
-
-      const payload = {
-        id: tourData.id,
-        tourNo: tourData.requestno || tourData.id,
-        requestDate: parseDateString(tourData.requestdate)?.toISOString() || new Date().toISOString(),
-        empName: tourData.employee_name,
-        empCode: tourData.employee_code,
-        empDesign: tourData.empdesignation,
-        empGrade: tourData.empgrade,
-        reason: tourData.reason_data || { id: tourData.reason_id, name: tourData.reason },
-        startDate: startDateISO,
-        endDate: endDateISO,
-        durationDays: tourData.durationdays ?? diffInDays(startDateISO, endDateISO),
-        remarks: tourData.ordernoremarks,
-        permittedby: permittedByNormalized,
-        empbranchgid: branchNormalized,
-        approval: approverNormalized,
-        transfer_on_promotion: tourData.transfer_on_promotion?.toString() || "0",
-        quantum_of_funds: tourData.quantum_of_funds,
-        opening_balance: tourData.opening_balance,
-        debit_branch: tourData.debit_branch,
-        details: (tourData.detail || []).map((item) => ({
-          ...item,
-          detailStartDate: parseDateString(item.startdate)?.toISOString(),
-          detailEndDate: parseDateString(item.enddate)?.toISOString(),
-          startingpoint: item.startingpoint || "",
-          placeofvisit: item.placeofvisit || "",
-          purposeofvisit: item.purposeofvisit || "",
-        })),
-      };
+      const payload = buildTourFormPayload(tourData);
       dispatch(updateField(payload));
     }
-  }, [tourData, isMaker, from, dispatch]);
+  }, [tourData, isMaker, from, isViewMode, dispatch]);
 
   const handleOpenPermittedByPicker = async () => {
     if (!isEditable) return;
@@ -561,7 +715,11 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
 
   const handleConfirmDate = (event, selectedDate, setFieldValue, values) => {
     setIsDatePickerVisible(false);
-    if (!selectedDate) return;
+    if (event?.type === "dismissed" || !selectedDate) {
+      setActiveDetailIndex(null);
+      setDateTargetField(null);
+      return;
+    }
 
     const isoDate = selectedDate.toISOString();
 
@@ -580,6 +738,8 @@ console.log("Tour ID:", tour_id, "From:", from, "ID:", Id);
     } else if (dateTargetField === "detailEnd" && activeDetailIndex !== null) {
       setFieldValue(`details[${activeDetailIndex}].detailEndDate`, isoDate);
     }
+    setActiveDetailIndex(null);
+    setDateTargetField(null);
   };
 
 // Approver Action Handlers
@@ -975,7 +1135,7 @@ console.log("Submit Response:", response);
     );
   };
 
-  if (isLoadingTourData) {
+  if (isLoadingTourData && !travelForm?.tourNo && !travelForm?.empName) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={CustomColors.appThemeColor} />
@@ -1029,14 +1189,26 @@ console.log("Submit Response:", response);
   
   <TouchableOpacity 
     onPress={openReasonPicker} 
-    style={[styles.input, !isEditable && { opacity: 0.6 }]} 
+    style={[styles.input, !isEditable && { opacity: 0.85 }]} 
     disabled={!isEditable}
   >
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-      <Text allowFontScaling={false} style={{ color: values.reason?.name ? CustomColors.textDark : CustomColors.textGray }}>
-        {values.reason?.name ? String(values.reason.name) : "Select Reason"}
+      <Text
+        allowFontScaling={false}
+        style={{
+          color:
+            values.reason?.name || (typeof values.reason === "string" && values.reason)
+              ? CustomColors.textDark
+              : CustomColors.textGray,
+        }}
+      >
+        {values.reason?.name
+          ? String(values.reason.name)
+          : typeof values.reason === "string" && values.reason
+          ? values.reason
+          : "Select Reason"}
       </Text>
-      <Ionicons name="chevron-down" size={20} color={CustomColors.textGray} />
+      {isEditable && <Ionicons name="chevron-down" size={20} color={CustomColors.textGray} />}
     </View>
   </TouchableOpacity>
 
@@ -1097,66 +1269,87 @@ console.log("Submit Response:", response);
 
                 <View style={styles.sectionCard}>
                   <Text allowFontScaling={false} style={styles.sectionHeader}>Tour Itinerary Table</Text>
-                  {(values.details || []).map((item, index) => (
-                    <View key={index} style={{ borderBottomWidth: 1, borderBottomColor: CustomColors.borderLight, paddingBottom: 15, marginBottom: 15 }}>
-                      <Text style={[styles.label, { color: CustomColors.appThemeColor }]}>S.No: {index + 1}</Text>
+                  {(!values.details || values.details.length === 0) ? (
+                    <Text
+                      allowFontScaling={false}
+                      style={{
+                        color: CustomColors.textGray,
+                        fontSize: moderateScale(13),
+                        marginVertical: verticalScale(8),
+                      }}
+                    >
+                      No itinerary details available
+                    </Text>
+                  ) : (
+                    (values.details || []).map((item, index) => (
+                      <View key={index} style={{ borderBottomWidth: 1, borderBottomColor: CustomColors.borderLight, paddingBottom: 15, marginBottom: 15 }}>
+                        <Text style={[styles.label, { color: CustomColors.appThemeColor }]}>S.No: {index + 1}</Text>
 
-                      <View style={styles.dateRow}>
-                        <TouchableOpacity
-                          style={styles.dateColumn}
-                          disabled={!isEditable}
-                          onPress={() => {
-                            setDateTargetField("detailStart");
-                            setActiveDetailIndex(index);
-                            setIsDatePickerVisible(true);
-                          }}
-                        >
-                          <Text allowFontScaling={false} style={styles.label}>Start Date</Text>
-                          <TextInput style={styles.input} value={formatDate(item.detailStartDate)} editable={false} pointerEvents="none" allowFontScaling={false} />
-                        </TouchableOpacity>
+                        <View style={styles.dateRow}>
+                          <TouchableOpacity
+                            style={styles.dateColumn}
+                            disabled={!isEditable}
+                            onPress={() => {
+                              if (!values?.startDate || !values?.endDate) {
+                                ToastMessage("Please select Tour Start Date and Tour End Date first");
+                                return;
+                              }
+                              setDateTargetField("detailStart");
+                              setActiveDetailIndex(index);
+                              setIsDatePickerVisible(true);
+                            }}
+                          >
+                            <Text allowFontScaling={false} style={styles.label}>Start Date</Text>
+                            <TextInput style={styles.input} value={formatDate(item.detailStartDate)} editable={false} pointerEvents="none" allowFontScaling={false} />
+                          </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={styles.dateColumn}
-                          disabled={!isEditable}
-                          onPress={() => {
-                            setDateTargetField("detailEnd");
-                            setActiveDetailIndex(index);
-                            setIsDatePickerVisible(true);
-                          }}
-                        >
-                          <Text allowFontScaling={false} style={styles.label}>End Date</Text>
-                          <TextInput style={styles.input} value={formatDate(item.detailEndDate)} editable={false} pointerEvents="none" allowFontScaling={false} />
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.dateColumn}
+                            disabled={!isEditable}
+                            onPress={() => {
+                              if (!values?.startDate || !values?.endDate) {
+                                ToastMessage("Please select Tour Start Date and Tour End Date first");
+                                return;
+                              }
+                              setDateTargetField("detailEnd");
+                              setActiveDetailIndex(index);
+                              setIsDatePickerVisible(true);
+                            }}
+                          >
+                            <Text allowFontScaling={false} style={styles.label}>End Date</Text>
+                            <TextInput style={styles.input} value={formatDate(item.detailEndDate)} editable={false} pointerEvents="none" allowFontScaling={false} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <Text allowFontScaling={false} style={styles.label}>Starting Point</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={item.startingpoint}
+                          onChangeText={(text) => setFieldValue(`details[${index}].startingpoint`, text)}
+                          editable={isEditable}
+                          allowFontScaling={false}
+                        />
+
+                        <Text allowFontScaling={false} style={styles.label}>Place of Visit</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={item.placeofvisit}
+                          onChangeText={(text) => setFieldValue(`details[${index}].placeofvisit`, text)}
+                          editable={isEditable}
+                          allowFontScaling={false}
+                        />
+
+                        <Text allowFontScaling={false} style={styles.label}>Purpose of Visit</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={item.purposeofvisit}
+                          onChangeText={(text) => setFieldValue(`details[${index}].purposeofvisit`, text)}
+                          editable={isEditable}
+                          allowFontScaling={false}
+                        />
                       </View>
-
-                      <Text allowFontScaling={false} style={styles.label}>Starting Point</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={item.startingpoint}
-                        onChangeText={(text) => setFieldValue(`details[${index}].startingpoint`, text)}
-                        editable={isEditable}
-                        allowFontScaling={false}
-                      />
-
-                      <Text allowFontScaling={false} style={styles.label}>Place of Visit</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={item.placeofvisit}
-                        onChangeText={(text) => setFieldValue(`details[${index}].placeofvisit`, text)}
-                        editable={isEditable}
-                        allowFontScaling={false}
-                      />
-
-                      <Text allowFontScaling={false} style={styles.label}>Purpose of Visit</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={item.purposeofvisit}
-                        onChangeText={(text) => setFieldValue(`details[${index}].purposeofvisit`, text)}
-                        editable={isEditable}
-                        allowFontScaling={false}
-                      />
-                    </View>
-                  ))}
+                    ))
+                  )}
                 </View>
 
                 {/* Upload Attachments Section */}
@@ -1316,16 +1509,84 @@ console.log("Submit Response:", response);
                     <Text allowFontScaling={false} style={styles.submitButtonText}>Submit Cancel Request</Text>
                   </TouchableOpacity>
                 )}
+
+                {/* View Mode Back Button */}
+                {isViewMode && (
+                  <TouchableOpacity
+                    style={[styles.submitButtonFullWidth, { backgroundColor: CustomColors.appThemeColor }]}
+                    onPress={() => navigation.goBack()}
+                  >
+                    <Text allowFontScaling={false} style={styles.submitButtonText}>Back</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
-              {isDatePickerVisible && (
-                <DateTimePicker
-                  value={new Date()}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  onChange={(evt, date) => handleConfirmDate(evt, date, setFieldValue, values)}
-                />
-              )}
+              {isDatePickerVisible && (() => {
+                let pickerValue = new Date();
+                let minDate = undefined;
+                let maxDate = undefined;
+
+                if (activeDetailIndex !== null && (dateTargetField === "detailStart" || dateTargetField === "detailEnd")) {
+                  const leg = values?.details?.[activeDetailIndex];
+                  const tourStart = values?.startDate ? new Date(values.startDate) : null;
+                  const tourEnd = values?.endDate ? new Date(values.endDate) : null;
+
+                  minDate = tourStart || undefined;
+                  maxDate = tourEnd || undefined;
+
+                  if (dateTargetField === "detailStart") {
+                    if (leg?.detailStartDate) {
+                      pickerValue = new Date(leg.detailStartDate);
+                    } else if (tourStart) {
+                      pickerValue = tourStart;
+                    }
+                  } else if (dateTargetField === "detailEnd") {
+                    if (leg?.detailStartDate) {
+                      minDate = new Date(leg.detailStartDate);
+                    }
+                    if (leg?.detailEndDate) {
+                      pickerValue = new Date(leg.detailEndDate);
+                    } else if (leg?.detailStartDate) {
+                      pickerValue = new Date(leg.detailStartDate);
+                    } else if (tourEnd) {
+                      pickerValue = tourEnd;
+                    }
+                  }
+
+                  if (minDate && pickerValue < minDate) {
+                    pickerValue = minDate;
+                  }
+                  if (maxDate && pickerValue > maxDate) {
+                    pickerValue = maxDate;
+                  }
+                } else {
+                  if (dateTargetField === "startDate") {
+                    if (values?.startDate) {
+                      pickerValue = new Date(values.startDate);
+                    }
+                  } else if (dateTargetField === "endDate") {
+                    if (values?.endDate) {
+                      pickerValue = new Date(values.endDate);
+                    } else if (values?.startDate) {
+                      pickerValue = new Date(values.startDate);
+                    }
+                    if (values?.startDate) {
+                      minDate = new Date(values.startDate);
+                    }
+                  }
+                }
+
+                return (
+                  <DateTimePicker
+                    value={pickerValue}
+                    mode="date"
+                    display={Platform.OS === "ios" ? "spinner" : "default"}
+                    minimumDate={minDate}
+                    maximumDate={maxDate}
+                    onChange={(evt, date) => handleConfirmDate(evt, date, setFieldValue, values)}
+                  />
+                );
+              })()}
 <CustomActionSheetPicker
   pickerStatus={isReasonPickerVisible}
   setPickerStatus={setIsReasonPickerVisible}

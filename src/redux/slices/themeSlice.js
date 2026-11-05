@@ -59,8 +59,18 @@ const themeSlice = createSlice({
             }
         });
 
+        builder.addCase(saveTheme.pending, (state, action) => {
+            const mode = action.meta.arg;
+            state.mode = mode;
+            if (mode === "auto") {
+                const systemScheme = Appearance.getColorScheme();
+                state.isDark = systemScheme === "dark";
+            } else {
+                state.isDark = mode === "dark";
+            }
+        });
+
         builder.addCase(saveTheme.fulfilled, (state, action) => {
-            // optional: can update state if needed
             state.mode = action.payload;
             if (action.payload === "auto") {
                 const systemScheme = Appearance.getColorScheme();

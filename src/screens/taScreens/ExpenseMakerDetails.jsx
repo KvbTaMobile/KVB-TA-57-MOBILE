@@ -25,6 +25,7 @@ import {
   useTourForwardMutation,
   useExpenseSubmitMutation,
   useLazyGetBusinessSegmentsQuery, useLazyGetCcSegmentsQuery,
+  useLazyApproverListQuery,
 
 } from '../../redux/rtk_query/apiSlice';
 import { MaterialCommunityIcons as Icon } from "@expo/vector-icons";
@@ -92,9 +93,14 @@ const [filesByExpense, setFilesByExpense] = useState({});
   const expenseIdToScreenMap = {
     [EXPENSE_IDS.TRAVELLING_EXPENSE]: SCREEN_NAMES.TRAVELLING_EXPENSES,
     [EXPENSE_IDS.DAILY_REIMBURSEMENT]: SCREEN_NAMES.DAILY_REIMBURSEMENT,
+    [EXPENSE_IDS.INCIDENTAL_EXPENSE]: SCREEN_NAMES.INCIDENTAL_EXPENSE,
     [EXPENSE_IDS.LOCAL_CONVEYANCE]: SCREEN_NAMES.LOCAL_CONVEYANCE,
     [EXPENSE_IDS.LODGING]: SCREEN_NAMES.LODGING,
+    [EXPENSE_IDS.MISC_EXPENSE]: SCREEN_NAMES.MISC_EXPENSE,
+    [EXPENSE_IDS.PACKAGING_FREIGHT]: SCREEN_NAMES.PACKAGING_FREIGHT,
+    [EXPENSE_IDS.Local_Deputation_Allowance]: SCREEN_NAMES.Local_Deputation_Allowance,
     [EXPENSE_IDS.ASSOCIATED_EXPENSE]: SCREEN_NAMES.ASSOCIATED_EXPENSE,
+
   };
 
 
@@ -138,6 +144,10 @@ const [filesByExpense, setFilesByExpense] = useState({});
   const [isRemarksModalVisible, setIsRemarksModalVisible] = useState(false);
   const [expremarks, setexpRemarks] = useState('');
   const [availableExpenseList, setAvailableExpenseList] = useState([]);
+  const [triggerApproverList, { isFetching: isApproverLoading }] = useLazyApproverListQuery();
+  const [approverList, setApproverList] = useState([]);
+  const [selectedApprover, setSelectedApprover] = useState(null);
+  const [isApproverPickerVisible, setIsApproverPickerVisible] = useState(false);
   const [CcPage, setCcPage] = useState(0);
   const [hasMoreCc, sethasMoreCc] = useState(true);
   const [currentCcSearchQuery, setcurrentCcSearchQuery] = useState("");
@@ -1076,12 +1086,10 @@ const [filesByExpense, setFilesByExpense] = useState({});
 useFocusEffect(
   useCallback(() => {
     if (!tourNo) {
-      ToastMessage("Expense ID not found. Cannot fetch details.");
-      navigation.goBack();
       return;
     }
     setLoading(true);
-    setIsAppoverEditable(expense.claim_status_id === 2);
+    setIsAppoverEditable(expense?.claim_status_id === 2);
     triggerGetDetails(tourNo)
       .unwrap()
       .then((data) => {
@@ -1089,44 +1097,81 @@ useFocusEffect(
         setFetchError(null);
       })
       .catch((err) => {
-        ToastMessage("Failed to fetch expense details.");
         setFetchError(err);
       })
       .finally(() => setLoading(false));
-  }, [tourNo, triggerGetDetails, dispatch, expense.claim_status_id, navigation])
+  }, [tourNo, triggerGetDetails, dispatch, expense?.claim_status_id])
 );
 
   useEffect(() => {
     return () => {
       dispatch(clearCcbsSplits());
-    }
-  }, [])
+    };
+  }, []);
 
+  // Fetch approval flow and approvers on mount
   useEffect(() => {
     if (tourNo) {
-      setLoading(true);
-      // //console.log('111111111111111', expense.claim_status_id)
-      setIsAppoverEditable(expense.claim_status_id === 2);
-      triggerGetDetails(tourNo)
+      triggerApprovalFlow(tourNo)
         .unwrap()
-        .then((data) => {
-          dispatch(setExpenseDetails(data));
-          setFetchError(null);
+        .then((res) => {
+          if (res?.data || res) {
+            dispatch(setApprovalFlow(res?.data || res));
+          }
         })
-        .catch((err) => {
-          // console.error("Error fetching expense details:", err);
-          ToastMessage("Failed to fetch expense details.");
-          setFetchError(err);
-        })
-        .finally(() =>
-          setLoading(false)
-
-        );
-    } else {
-      ToastMessage("Expense ID not found. Cannot fetch details.");
-      navigation.goBack();
+        .catch(() => {});
     }
-  }, [tourNo]);
+  }, [tourNo, triggerApprovalFlow, dispatch]);
+
+  // Auto-resolve Approver from approvalFlow, expense, or expenseDetails
+  useEffect(() => {
+    if (selectedApprover?.id) return;
+
+    const flowStep =
+      approvalFlow?.approve?.find((s) => s.status === 2 && s.approver_id) ||
+      approvalFlow?.approve?.find((s) => s.applevel === 1 && s.approver_id) ||
+      approvalFlow?.approve?.find((s) => s.approver_id) ||
+      approvalFlow?.approve?.[0];
+
+    const approverId =
+      flowStep?.approver_id ||
+      flowStep?.approvedby_id ||
+      expense?.approver_id ||
+      expense?.approvedby_id ||
+      expense?.approval_id ||
+      (typeof expense?.approval === 'object'
+        ? expense?.approval?.id
+        : typeof expense?.approval === 'number'
+        ? expense?.approval
+        : null) ||
+      expenseDetails?.approver_data?.id ||
+      expenseDetails?.approver_id ||
+      expenseDetails?.approvedby_id;
+
+    const approverName =
+      flowStep?.approvedby ||
+      expense?.approvedby ||
+      expenseDetails?.approver_data?.name ||
+      expenseDetails?.approvedby ||
+      '';
+
+    const approverCode =
+      flowStep?.approver_code ||
+      expense?.approver_code ||
+      expenseDetails?.approver_data?.code ||
+      '';
+
+    if (approverId) {
+      setSelectedApprover({
+        id: Number(approverId),
+        name: approverName,
+        code: approverCode,
+        fullLabel: approverCode
+          ? `(${approverCode}) ${approverName}`
+          : approverName || `Approver #${approverId}`,
+      });
+    }
+  }, [approvalFlow, expense, expenseDetails, selectedApprover?.id]);
 
   useEffect(() => {
     const fetchExpenseList = async () => {
@@ -1146,29 +1191,33 @@ useFocusEffect(
   useEffect(() => {
     const fetchccbs = async () => {
       try {
-        const response = await triggerGetCCBSQuery({ type: 2, tour: tourNo }).unwrap();
-        dispatch(setCcbsSplits(response));
+        const response = await triggerGetCCBSQuery({ type: 2, tour: tourNo, tour_id: tourNo }).unwrap();
+        if (Array.isArray(response)) {
+          dispatch(setCcbsSplits(response));
 
-        const newList = response.map(item => ({
-          business: {
-            id: item.bs_data?.id || null,
-            name: item.bs_data?.name || '',
-          },
-          cc: {
-            id: item.cc_data?.id || null,
-            name: item.cc_data?.name || '',
-          },
-          percentage: item.percentage?.toString() || '',
-          amount: item.amount?.toString() || '',
-        }));
+          const newList = response.map(item => ({
+            business: {
+              id: item.bs_data?.id || null,
+              name: item.bs_data?.name || '',
+            },
+            cc: {
+              id: item.cc_data?.id || null,
+              name: item.cc_data?.name || '',
+            },
+            percentage: item.percentage?.toString() || '',
+            amount: item.amount?.toString() || '',
+          }));
 
-        setSplitsList(newList);
+          setSplitsList(newList);
+        }
       } catch (err) {
-        console.error('Error fetching CCBS data:', err);
+        console.log('CCBS data not available or error:', err);
       }
     };
 
-    fetchccbs();
+    if (tourNo) {
+      fetchccbs();
+    }
   }, [triggerGetCCBSQuery, dispatch, tourNo]);
 
   useEffect(() => {
@@ -1266,10 +1315,14 @@ useFocusEffect(
       debounceTimeout.current = setTimeout(() => {
         setcurrentBsSearchQuery(query);
         setBsPage(1);
-        sethasMoreBs(true); // Reset for new search
-        dispatch(setBusinessList([])); // Clear previous results immediately
-        triggerbs({ query: query, page: 1 });
-      }, 500);
+        sethasMoreBs(true);
+        triggerbs({ query: query, page: 1 }).then((res) => {
+          if (res?.data?.data) {
+            dispatch(setBusinessList(res.data.data));
+            sethasMoreBs(res.data.pagination?.has_next ?? false);
+          }
+        });
+      }, 400);
     },
     [triggerbs, dispatch]
   );
@@ -1279,61 +1332,65 @@ useFocusEffect(
     }
     const nextPage = BsPage + 1;
     setBsPage(nextPage);
-    triggerbs({ query: currentBsSearchQuery, page: nextPage });
+    triggerbs({ query: currentBsSearchQuery, page: nextPage }).then((res) => {
+      if (res?.data?.data && res.data.data.length > 0) {
+        dispatch(setBusinessList([...(businessList || []), ...res.data.data]));
+        sethasMoreBs(res.data.pagination?.has_next ?? false);
+      } else {
+        sethasMoreBs(false);
+      }
+    });
   };
   const openBsPicker = () => {
     setBsPickerVisible(true);
-    if (setBusinessList.length === 0 || currentBsSearchQuery !== "") {
-      // Fetch if empty or if there was a search term
-      setcurrentBsSearchQuery(""); // Reset search for initial load
+    if (!businessList || businessList.length === 0 || currentBsSearchQuery !== "") {
+      setcurrentBsSearchQuery("");
       setBsPage(1);
       sethasMoreBs(true);
-      dispatch(setBusinessList([]));
-      triggerbs({ query: "", page: 1 });
+      triggerbs({ query: "", page: 1 }).then((res) => {
+        if (res?.data?.data) {
+          dispatch(setBusinessList(res.data.data));
+          sethasMoreBs(res.data.pagination?.has_next ?? false);
+        }
+      });
     }
   };
   //CC
   const handleSearchCc = useCallback(
     (query) => {
-      if (!currentSplit?.business) {
-        ToastMessage("Please Select Business Segement First.")
-        return
+      const bsId = currentSplit?.business?.id || currentSplit?.business?.value;
+      if (!bsId) {
+        ToastMessage("Please Select Business Segement First.");
+        return;
       }
-      //console.log('query111111111', query)
       if (debounceTimeout.current) {
         clearTimeout(debounceTimeout.current);
       }
       debounceTimeout.current = setTimeout(() => {
         setcurrentCcSearchQuery(query);
-        // setCcPage(1);
-        // sethasMoreCc(true); // Reset for new search
-        dispatch(setCostCenterList([])); // Clear previous results immediately
-        triggercc({ query: query, bs_id: currentSplit.business.id });
-      }, 500);
+        triggercc({ query: query, bs_id: bsId }).then((res) => {
+          if (res?.data?.data) {
+            dispatch(setCostCenterList(res.data.data));
+          }
+        });
+      }, 400);
     },
-    [triggercc, dispatch]
+    [triggercc, dispatch, currentSplit?.business]
   );
-  // const handleLoadMoreCc = () => {
-  //   if (isFetchingCC || !hasMoreCc) {
-  //     return;
-  //   }
-  //   const nextPage = CcPage + 1;
-  //   setCcPage(nextPage);
-  //   triggercc({ query: currentCcSearchQuery, page: nextPage });
-  // };
   const openCcPicker = () => {
-    if (!currentSplit?.business) {
-      ToastMessage("Please Select Business Segement First.")
-      return
+    const bsId = currentSplit?.business?.id || currentSplit?.business?.value;
+    if (!bsId) {
+      ToastMessage("Please Select Business Segement First.");
+      return;
     }
     setCcPickerVisible(true);
-    if (setCostCenterList.length === 0 || currentCcSearchQuery !== "") {
-      // Fetch if empty or if there was a search term
-      setcurrentCcSearchQuery(""); // Reset search for initial load
-      // setCcPage(1);
-      // sethasMoreCc(true);
-      // dispatch(setCostCenterList([]));
-      triggercc({ query: "", bs_id: currentSplit.business.id });
+    if (!costCenterList || costCenterList.length === 0 || currentCcSearchQuery !== "") {
+      setcurrentCcSearchQuery("");
+      triggercc({ query: "", bs_id: bsId }).then((res) => {
+        if (res?.data?.data) {
+          dispatch(setCostCenterList(res.data.data));
+        }
+      });
     }
   };
   const onChangeAmount = (val) => {
@@ -1380,15 +1437,65 @@ useFocusEffect(
     setSelectedIndex(null);
     setCurrentSplit({ business: null, cc: null, percentage: '', amount: '' });
   };
-  const handleExpSubmit = async () => {
+  const openSubmitModal = async () => {
+    setIsRemarksModalVisible(true);
+    const branchId =
+      expense?.branch_id ||
+      expense?.empbranchgid ||
+      expenseDetails?.branch_id ||
+      authRedux?.user?.employee_branch_id ||
+      authRedux?.user?.branch_id ||
+      authRedux?.user?.branch;
 
+    if (branchId && (!approverList || approverList.length === 0)) {
+      try {
+        const res = await triggerApproverList({ branch: branchId, page: 1, type: "tour" }).unwrap();
+        if (Array.isArray(res?.data)) {
+          setApproverList(
+            res.data.map((emp) => ({
+              label: `(${emp.code}) ${emp.full_name || emp.name} - ${emp.employee_designation || ""}`,
+              value: emp.id,
+              raw: emp,
+            }))
+          );
+        }
+      } catch (e) {
+        // console.warn("Failed to load approver list:", e);
+      }
+    }
+  };
+
+  const handleExpSubmit = async () => {
     if (!expremarks.trim()) {
       ToastMessage('Please enter remarks before submitting.');
       return;
     }
 
     if (!tourNo || !splitsList.length) {
-      ToastMessage('Tour number or splits missing.');
+      ToastMessage('Tour number or CCBS splits missing.');
+      return;
+    }
+
+    const finalApproverId =
+      selectedApprover?.id ||
+      expense?.approver_id ||
+      expense?.approvedby_id ||
+      expense?.approval_id ||
+      (typeof expense?.approval === 'object'
+        ? expense?.approval?.id
+        : typeof expense?.approval === 'number'
+        ? expense?.approval
+        : null) ||
+      approvalFlow?.approve?.find((s) => s.status === 2 && s.approver_id)?.approver_id ||
+      approvalFlow?.approve?.find((s) => s.applevel === 1 && s.approver_id)?.approver_id ||
+      approvalFlow?.approve?.find((s) => s.approver_id)?.approver_id ||
+      approvalFlow?.approve?.[0]?.approver_id ||
+      approvalFlow?.approve?.[0]?.id ||
+      expenseDetails?.approver_data?.id ||
+      expenseDetails?.approver_id;
+
+    if (!finalApproverId) {
+      ToastMessage('Please select an Approver before submitting.');
       return;
     }
 
@@ -1399,27 +1506,53 @@ useFocusEffect(
       percentage: parseFloat(split.percentage) || 0,
       tourgid: tourNo,
     }));
-    const formData = new FormData();
-    formData.append('data', JSON.stringify({
-      tourgid: tourNo,
-      appcomment: expremarks.trim(), // ✅ clean input
+
+    const submitPayload = {
+      tourgid: Number(tourNo),
+      appcomment: expremarks.trim(),
       ccbs: allSplits,
-    }))
+      approveby: Number(finalApproverId),
+      approvedby: Number(finalApproverId),
+      approval: Number(finalApproverId),
+    };
 
+    console.log("Submitting Expense Payload:", JSON.stringify(submitPayload));
+
+    setIsSubmitting(true);
     try {
-      const res = await triggerExpenseSubmit(formData).unwrap();
+      const res = await uploadMultipart({
+        url: `${Environment.taServiceUrl}/taserv/expense/submit`,
+        data: submitPayload,
+        headers: {
+          Authorization: `Token ${authToken}`,
+          ...(csrfToken && { 'X-CSRFToken': csrfToken }),
+          ...(csrfCookie && { 'X-CSRFCookie': csrfCookie }),
+        },
+      });
 
-      if (res?.status === 'success') {
-        ToastMessage(res.message || 'Submitted successfully.');
-        // dispatch(setCcbsSplits(allSplits));
+      console.log("Expense Submit Response:", res);
+
+      if (
+        res?.status?.toLowerCase() === 'success' ||
+        res?.message?.toLowerCase() === 'success' ||
+        res?.data?.status?.toLowerCase() === 'success'
+      ) {
+        ToastMessage(res?.message || res?.description || 'Submitted successfully.');
         setIsRemarksModalVisible(false);
         setexpRemarks('');
         setSelectedIndex(null);
         setCurrentSplit({ business: null, cc: null, percentage: '', amount: '' });
-        navigation.goBack()
+        navigation.goBack();
+      } else {
+        const msg = res?.description || res?.message || res?.data?.description || 'Submission failed.';
+        ToastMessage(msg);
       }
     } catch (err) {
-      ToastMessage(err?.data?.message || 'Submission failed.');
+      console.log("Expense Submit Catch Error:", err);
+      const msg = err?.data?.description || err?.data?.message || err?.message || 'Submission failed.';
+      ToastMessage(msg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1500,13 +1633,6 @@ const pickFiles = async (expenseId) => {
   //     console.log('check item', expenseItems.length, expenseItems[0].expenseid)
   //   }
   // })
-  useEffect(() => {
-    const filteredList = Array.isArray(expenseList)
-      ? expenseList.filter(item => !createdExpenseIds.includes(item.id))
-      : [];
-
-    setAvailableExpenseList(filteredList);
-  }, [expenseList, createdExpenseIds]);
   const createdExpenseIds = useMemo(() => {
     return Array.isArray(expenseItems)
       ? expenseItems
@@ -1516,33 +1642,47 @@ const pickFiles = async (expenseId) => {
   }, [expenseItems]);
 
   useEffect(() => {
+    const tourReason = String(
+      expense?.reason ||
+      expense?.tour_reason ||
+      expense?.reason_data?.name ||
+      expenseDetails?.reason ||
+      expenseDetails?.tour_reason ||
+      ''
+    ).toLowerCase();
+
+    const isLocalDeputation = tourReason.includes('local deputation') || tourReason.includes('deputation');
+
     const timer = setTimeout(() => {
-      const filteredList = Array.isArray(expenseList)
+      let filteredList = Array.isArray(expenseList)
         ? expenseList.filter(item => !createdExpenseIds?.includes(item?.id))
         : [];
 
-      setAvailableExpenseList(filteredList);
-    }, 500); // ⏱ delay in ms (500ms – you can change)
+      if (isLocalDeputation) {
+        // When tour reason is Local Deputation, only Local Deputation Allowance is allowed
+        filteredList = filteredList.filter(item => item.id === EXPENSE_IDS.Local_Deputation_Allowance);
+      } else {
+        // For all other tour reasons, exclude Local Deputation Allowance
+        filteredList = filteredList.filter(item => item.id !== EXPENSE_IDS.Local_Deputation_Allowance);
+      }
 
-    return () => clearTimeout(timer); // cleanup to avoid memory leaks
-  }, [expenseList, createdExpenseIds]);
+      setAvailableExpenseList(filteredList);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [expenseList, createdExpenseIds, expense, expenseDetails]);
 
 
   useEffect(() => {
-    if (tourNo && getExpenseId) {
-      // //console.log("TOUR NO", tourNo, "EXP Type", getExpenseId.length);
-      getExpenseId?.map((item) => {
-        triggerGetDocuments({ tour_id: tourNo, expid: item.expenseid })
-          .unwrap()
-          .then((res) => {
-            dispatch(setDocuments({ key: item.expenseid, value: res.data })); // Store in Redux
-          })
-          .catch((err) => {
-            // console.error("Document fetch error:", err);
-          });
-      })
+    if (expenseDetails && Array.isArray(expenseDetails.data)) {
+      expenseDetails.data.forEach((item) => {
+        const itemDocs = item.documents || item.file_data || [];
+        if (item.expenseid && Array.isArray(itemDocs) && itemDocs.length > 0) {
+          dispatch(setDocuments({ key: item.expenseid, value: itemDocs }));
+        }
+      });
     }
-  }, [getExpenseId]);
+  }, [expenseDetails, dispatch]);
   useEffect(() => {
     const totalAdded = splitsList.reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
     const totalPercentage = splitsList.reduce((sum, s) => sum + parseFloat(s.percentage || 0), 0);
@@ -1910,6 +2050,25 @@ const handleAddExpenseItem = () => {
       return;
     }
 
+    if (selectedExpenseType === EXPENSE_IDS.Local_Deputation_Allowance) {
+      const tourReason = String(
+        expense?.reason ||
+        expense?.tour_reason ||
+        expense?.reason_data?.name ||
+        expenseDetails?.reason ||
+        expenseDetails?.tour_reason ||
+        ''
+      ).toLowerCase();
+      const isLocalDeputation = tourReason.includes('local deputation') || tourReason.includes('deputation');
+      if (!isLocalDeputation) {
+        Alert.alert(
+          'Expense Not Allowed',
+          'Local Deputation Allowance is not permitted for this tour. Bank policy strictly requires the tour reason to be "Local Deputation".'
+        );
+        return;
+      }
+    }
+
     const expenseTypeName =
       expenseList?.find(opt => String(opt.id) === String(selectedExpenseType))?.name
       || 'Unknown Expense Type';
@@ -1939,8 +2098,10 @@ const handleAddExpenseItem = () => {
     setIsAddExpenseModalVisible(false);
 
     const targetScreen = expenseIdToScreenMap[newItem.expenseid];
+    console.log('Navigating to screen for new expense item:', targetScreen, 'with data:', newItem);
     if (targetScreen) {
       navigation.navigate(targetScreen, {
+        tourId: tourNo,
         expense: newItem,
         claimdata: expense,
         fromNew: true,
@@ -1980,7 +2141,12 @@ const handleAddExpenseItem = () => {
     if (targetScreen) {
       // Navigate to the specific screen for the expense ID
       // //console.log("==========>", expenseData )
-      navigation.navigate(targetScreen, { expense: expenseData, claimdata: expense, from });
+      navigation.navigate(targetScreen, {
+        tourId: tourNo,
+        expense: expenseData,
+        claimdata: expense,
+        from,
+      });
     } else {
       // Handle cases where an expense ID doesn't have a specific screen mapping
       // console.warn(
@@ -2467,10 +2633,10 @@ const handleUpload = async (typeId) => {
 
                 {/* Add CCBS Button for each item */}
                 <View style={styles.attachmentButtonsContainer}>
-                  {from !== 'Checker' && (
+                  {(from !== 'Checker' || isAppoverEditable) && (
                     <TouchableOpacity
                       style={styles.pickFileButton}
-                      disabled={!canAddItems}
+                      disabled={!canAddItems && !isAppoverEditable}
                       onPress={() => {
                         setSelectedIndex(null);
                         setCurrentSplit({ business: null, cc: null, percentage: '', amount: '' });
@@ -2489,7 +2655,7 @@ const handleUpload = async (typeId) => {
                     <Text allowFontScaling={false} style={modalStyles.ccbsSectionTitle}>Submitted CCBS</Text>
                     {ccbsSplits.map((split, idx) => (
                       <TouchableOpacity
-                        disabled={!canAddItems}
+                        disabled={!canAddItems && !isAppoverEditable}
                         key={idx}
                         style={modalStyles.card}
                         onPress={() => onEditSplit(idx)}
@@ -2759,7 +2925,7 @@ const handleUpload = async (typeId) => {
               },
             ]}
             disabled={!canAddItems}
-            onPress={() => setIsRemarksModalVisible(true)}
+            onPress={openSubmitModal}
           >
             <Text allowFontScaling={false} style={styles.fullWidthButtonText}>Submit</Text>
           </TouchableOpacity>
@@ -2775,41 +2941,101 @@ const handleUpload = async (typeId) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <TouchableOpacity
-              // style={modalStyles.cancelButton}
               onPress={() => setIsRemarksModalVisible(false)}
             >
               <Icon name="close" size={24} color={CustomColors.textRed} />
             </TouchableOpacity>
             <View style={globalStyle.headerStyle}>
-              <Text allowFontScaling={false} style={styles.modalTitle}>Enter Remarks</Text>
-
+              <Text allowFontScaling={false} style={styles.modalTitle}>Submit Expense Claim</Text>
             </View>
 
             <ScrollView
               style={globalStyle.ScrollView}
               contentContainerStyle={styles.modalScrollViewContent}
             >
+              {/* Approver Selection / Display */}
+              <View style={{ marginBottom: verticalScale(12) }}>
+                <Text style={{ fontSize: moderateScale(13), fontWeight: "600", color: CustomColors.textBlack, marginBottom: verticalScale(4) }}>
+                  Approver *
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const branchId =
+                      expense?.branch_id ||
+                      expense?.empbranchgid ||
+                      expenseDetails?.branch_id ||
+                      authRedux?.user?.employee_branch_id ||
+                      authRedux?.user?.branch_id ||
+                      authRedux?.user?.branch;
+                    if (branchId && (!approverList || approverList.length === 0)) {
+                      triggerApproverList({ branch: branchId, page: 1, type: "tour" })
+                        .unwrap()
+                        .then((res) => {
+                          if (Array.isArray(res?.data)) {
+                            setApproverList(
+                              res.data.map((emp) => ({
+                                label: `(${emp.code}) ${emp.full_name || emp.name} - ${emp.employee_designation || ""}`,
+                                value: emp.id,
+                                raw: emp,
+                              }))
+                            );
+                          }
+                        })
+                        .catch(() => {});
+                    }
+                    setIsApproverPickerVisible(true);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: moderateScale(10),
+                    backgroundColor: CustomColors.white,
+                    borderWidth: 1,
+                    borderColor: selectedApprover?.id ? CustomColors.primaryThemeColor : CustomColors.borderGray,
+                    borderRadius: moderateScale(8),
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    <Ionicons name="person-circle-outline" size={22} color={CustomColors.primaryThemeColor} style={{ marginRight: 8 }} />
+                    <Text style={{ fontSize: moderateScale(13), color: selectedApprover?.id ? CustomColors.textBlack : CustomColors.textGray }}>
+                      {selectedApprover?.fullLabel || selectedApprover?.name || "Select Approver"}
+                    </Text>
+                  </View>
+                  <Icon name="chevron-down" size={20} color={CustomColors.textGray} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ fontSize: moderateScale(13), fontWeight: "600", color: CustomColors.textBlack, marginBottom: verticalScale(4) }}>
+                Remarks *
+              </Text>
               <TextInput allowFontScaling={false}
-                style={globalStyle.input}
+                style={[globalStyle.input, { minHeight: verticalScale(60), textAlignVertical: 'top' }]}
                 value={expremarks}
                 onChangeText={setexpRemarks}
                 placeholder="Type your remarks..."
                 placeholderTextColor={CustomColors.textGray}
-              // multiline
+                multiline
               />
             </ScrollView>
 
             <View style={modalStyles.buttonRow}>
               <TouchableOpacity
-                style={modalStyles.confirmButton}
+                style={[modalStyles.confirmButton, isSubmitting && { opacity: 0.6 }]}
                 onPress={handleExpSubmit}
+                disabled={isSubmitting}
               >
-                <Text allowFontScaling={false} style={modalStyles.buttonText}>Confirm</Text>
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text allowFontScaling={false} style={modalStyles.buttonText}>Confirm</Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={modalStyles.cancelButton}
                 onPress={() => setIsRemarksModalVisible(false)}
+                disabled={isSubmitting}
               >
                 <Text allowFontScaling={false} style={modalStyles.buttonText}>Cancel</Text>
               </TouchableOpacity>
@@ -2817,6 +3043,53 @@ const handleUpload = async (typeId) => {
           </View>
         </View>
       </Modal>
+
+      {/* Approver Picker */}
+      {isApproverPickerVisible && (
+        <CustomActionSheetPicker
+          pickerStatus={isApproverPickerVisible}
+          setPickerStatus={setIsApproverPickerVisible}
+          title="Select Approver"
+          optionsData={approverList || []}
+          RenderItem={RenderDropdownItem}
+          onPress={(opt) => {
+            setSelectedApprover({
+              id: opt.value,
+              name: opt.raw?.full_name || opt.raw?.name || opt.label,
+              code: opt.raw?.code || "",
+              fullLabel: opt.label,
+            });
+            setIsApproverPickerVisible(false);
+          }}
+          selected={selectedApprover ? { value: selectedApprover.id, label: selectedApprover.fullLabel } : null}
+          onSearch={(query) => {
+            const branchId =
+              expense?.branch_id ||
+              expense?.empbranchgid ||
+              expenseDetails?.branch_id ||
+              authRedux?.user?.employee_branch_id ||
+              authRedux?.user?.branch_id ||
+              authRedux?.user?.branch;
+            if (branchId) {
+              triggerApproverList({ branch: branchId, name: query, page: 1, type: "tour" })
+                .unwrap()
+                .then((res) => {
+                  if (Array.isArray(res?.data)) {
+                    setApproverList(
+                      res.data.map((emp) => ({
+                        label: `(${emp.code}) ${emp.full_name || emp.name} - ${emp.employee_designation || ""}`,
+                        value: emp.id,
+                        raw: emp,
+                      }))
+                    );
+                  }
+                })
+                .catch(() => {});
+            }
+          }}
+          isLoading={isApproverLoading}
+        />
+      )}
 
 
       <Modal
@@ -2853,7 +3126,7 @@ const handleUpload = async (typeId) => {
               style={[
                 globalStyle.pickerInput,
               ]}
-              disabled={!isEditable}
+              disabled={false}
             >
               <Text allowFontScaling={false} style={globalStyle.pickerInputText}>
                 {currentSplit.business?.name
@@ -2867,47 +3140,17 @@ const handleUpload = async (typeId) => {
                 style={globalStyle.pickerIcon}
               />
             </TouchableOpacity>
-            {isBsPickerVisible && (
-              <CustomActionSheetPicker
-                pickerStatus={isBsPickerVisible}
-                setPickerStatus={setBsPickerVisible}
-                title="Select Business Segment "
-                optionsData={businessList.map((bs) => ({
-                  label: String(bs.name),
-                  value: bs.id,
-                }))}
-                RenderItem={RenderDropdownItem}
-                onPress={(selectedOption) => {
-                  setCurrentSplit({
-                    ...currentSplit, business: {
-                      id: selectedOption.value,
-                      name: selectedOption.label,
-                    }, cc: null
-                  });
-                }}
-                selected={{
-                  label: currentSplit.business?.name
-                    ? String(currentSplit.business.name)
-                    : undefined,
-                  value: currentSplit.business?.id ? currentSplit.business.id : undefined,
-                }} // Use ?.
-                onSearch={handleSearchBs}
-                isLoading={isFetchingBS && BsPage === 1}
-                onEndReached={handleLoadMoreBs}
-                hasMoreData={hasMoreBs}
-                isFetchingMore={isFetchingBS && BsPage > 1}
-              />
-            )}
+
             {/* Cost Center */}
             <Text allowFontScaling={false} style={globalStyle.label}>
-              Business Segment
+              Cost Center
             </Text>
             <TouchableOpacity
               onPress={openCcPicker}
               style={[
                 globalStyle.pickerInput,
               ]}
-              disabled={!isEditable}
+              disabled={false}
             >
               <Text allowFontScaling={false} style={globalStyle.pickerInputText}>
                 {currentSplit.cc?.name
@@ -2921,37 +3164,6 @@ const handleUpload = async (typeId) => {
                 style={globalStyle.pickerIcon}
               />
             </TouchableOpacity>
-            {isCcPickerVisible && (
-              <CustomActionSheetPicker
-                pickerStatus={isCcPickerVisible}
-                setPickerStatus={setCcPickerVisible}
-                title="Select Cost Center "
-                optionsData={costCenterList.map((cc) => ({
-                  label: String(cc.name),
-                  value: cc.id,
-                }))}
-                RenderItem={RenderDropdownItem}
-                onPress={(selectedOption) => {
-                  setCurrentSplit({
-                    ...currentSplit, cc: {
-                      id: selectedOption.value,
-                      name: selectedOption.label,
-                    }
-                  });
-                }}
-                selected={{
-                  label: currentSplit.cc?.name
-                    ? String(currentSplit.cc.name)
-                    : undefined,
-                  value: currentSplit.cc?.id ? currentSplit.cc.id : undefined,
-                }} // Use ?.
-                onSearch={handleSearchCc}
-                isLoading={isFetchingCC}
-              // onEndReached={handleLoadMoreCc}
-              // hasMoreData={hasMoreCc}
-              // isFetchingMore={isFetchingCC && CcPage > 1}
-              />
-            )}
 
             {/* Percentage */}
             <Text allowFontScaling={false} style={globalStyle.label}>Percentage (%)</Text>
@@ -3000,9 +3212,9 @@ const handleUpload = async (typeId) => {
                 style={[
                   modalStyles.modalButton,
                   modalStyles.confirmButton,
-                  (!canAddItems) && { backgroundColor: 'gray' },
+                  (!canAddItems && !isAppoverEditable) && { backgroundColor: 'gray' },
                 ]}
-                disabled={!canAddItems}
+                disabled={!canAddItems && !isAppoverEditable}
                 onPress={addOrUpdateSplit}
               >
                 <Text allowFontScaling={false} style={modalStyles.confirmButtonText}>
@@ -3046,6 +3258,78 @@ const handleUpload = async (typeId) => {
           </View>
         </View>
       </Modal>
+
+      {/* Business Segment Picker (Top-level Modal to ensure touch and scroll work) */}
+      {isBsPickerVisible && (
+        <CustomActionSheetPicker
+          pickerStatus={isBsPickerVisible}
+          setPickerStatus={setBsPickerVisible}
+          title="Select Business Segment "
+          optionsData={(businessList || []).map((bs) => ({
+            label: String(bs.name || ''),
+            value: bs.id,
+          }))}
+          RenderItem={RenderDropdownItem}
+          onPress={(selectedOption) => {
+            setCurrentSplit({
+              ...currentSplit,
+              business: {
+                id: selectedOption.value,
+                name: selectedOption.label,
+              },
+              cc: null,
+            });
+            dispatch(setCostCenterList([]));
+            triggercc({ query: "", bs_id: selectedOption.value }).then((res) => {
+              if (res?.data?.data) {
+                dispatch(setCostCenterList(res.data.data));
+              }
+            });
+          }}
+          selected={{
+            label: currentSplit.business?.name
+              ? String(currentSplit.business.name)
+              : undefined,
+            value: currentSplit.business?.id ? currentSplit.business.id : undefined,
+          }}
+          onSearch={handleSearchBs}
+          isLoading={isFetchingBS && BsPage === 1}
+          onEndReached={handleLoadMoreBs}
+          hasMoreData={hasMoreBs}
+          isFetchingMore={isFetchingBS && BsPage > 1}
+        />
+      )}
+
+      {/* Cost Center Picker (Top-level Modal) */}
+      {isCcPickerVisible && (
+        <CustomActionSheetPicker
+          pickerStatus={isCcPickerVisible}
+          setPickerStatus={setCcPickerVisible}
+          title="Select Cost Center "
+          optionsData={(costCenterList || []).map((cc) => ({
+            label: String(cc.name || ''),
+            value: cc.id,
+          }))}
+          RenderItem={RenderDropdownItem}
+          onPress={(selectedOption) => {
+            setCurrentSplit({
+              ...currentSplit,
+              cc: {
+                id: selectedOption.value,
+                name: selectedOption.label,
+              },
+            });
+          }}
+          selected={{
+            label: currentSplit.cc?.name
+              ? String(currentSplit.cc.name)
+              : undefined,
+            value: currentSplit.cc?.id ? currentSplit.cc.id : undefined,
+          }}
+          onSearch={handleSearchCc}
+          isLoading={isFetchingCC}
+        />
+      )}
 
 
 

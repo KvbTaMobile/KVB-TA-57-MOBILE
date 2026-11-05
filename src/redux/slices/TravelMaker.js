@@ -6,6 +6,7 @@ const getTourStatusText = (id) => {
     case 2:
       return "Tour Request Submitted To Approver";
     case 3:
+
       return "Tour Request Approved";
     case 4:
       return "Tour Request Rejected";
@@ -155,24 +156,24 @@ const TravelMaker = createSlice({
       state.totalCount = action.payload.count || 0;
     },
 
-   setAdvanceApproverSummaryArray: (state, action) => {
-  const advanceArray = action.payload.data.map((item) => {
-    // 🔑 Use item.advance_status_id or item.status (2) instead of item.tour_status ("APPROVED")
-    const activeStatusId = item.advance_status_id ?? item.status;
-    
-    return {
-      ...item,
-      tour_status_text: getAdvanceStatusText(activeStatusId),
-      from: "ADVANCE_CHECKER",
-    };
-  });
-  
-  state.advanceApproverSummaryArray = [
-    ...state.advanceApproverSummaryArray,
-    ...advanceArray,
-  ];
-  state.totalCount = action.payload.count || 0;
-},
+    setAdvanceApproverSummaryArray: (state, action) => {
+      const advanceArray = action.payload.data.map((item) => {
+        // 🔑 Use item.advance_status_id or item.status (2) instead of item.tour_status ("APPROVED")
+        const activeStatusId = item.advance_status_id ?? item.status;
+
+        return {
+          ...item,
+          tour_status_text: getAdvanceStatusText(activeStatusId),
+          from: "ADVANCE_CHECKER",
+        };
+      });
+
+      state.advanceApproverSummaryArray = [
+        ...state.advanceApproverSummaryArray,
+        ...advanceArray,
+      ];
+      state.totalCount = action.payload.count || 0;
+    },
 
     clearTravelMakerSummaryArray: (state) => {
       state.travelMakerSummaryArray = [];
