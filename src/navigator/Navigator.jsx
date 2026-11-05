@@ -1,7 +1,9 @@
 import { StatusBar } from "expo-status-bar";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DarkTheme, DefaultTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useSelector } from "react-redux";
 import { Colors } from "../globalstyles/Colors";
+import { getCustomColors } from "../styles/CustomColors";
 import LoginScreen from "../screens/user/LoginScreen";
 import DrawerNavigator from "./DrawerNavigator";
 // import RouteMapScreen from "../screens/map/RouteMapScreen";
@@ -42,20 +44,23 @@ import ForgotPasswordScreen from "../screens/user/ForgotPasswordScreen";
 const Stack = createNativeStackNavigator();
 
 export default function Navigator() {
+  const isDark = useSelector((state) => state.theme?.isDark);
+  const CustomColors = getCustomColors(isDark);
+
   return (
     <>
-      <StatusBar style="dark" translucent={true} />
-      <NavigationContainer ref={navigationRef}>
+      <StatusBar style={isDark ? "light" : "dark"} translucent={true} />
+      <NavigationContainer ref={navigationRef} theme={isDark ? DarkTheme : DefaultTheme}>
         <Stack.Navigator
           initialRouteName="login"
           screenOptions={{
             headerStyle: {
-              backgroundColor: Colors.actionBarColor,
+              backgroundColor: CustomColors.actionBarColor || Colors.actionBarColor,
             },
-            headerTintColor: Colors.actionBarTextColor,
-            navigationBarColor: Colors.navigationBarColor,
+            headerTintColor: CustomColors.actionBarTextColor || Colors.actionBarTextColor,
+            navigationBarColor: CustomColors.navigationBarColor || Colors.navigationBarColor,
             contentStyle: {
-              backgroundColor: Colors.appScreenColor,
+              backgroundColor: CustomColors.appScreenColor || Colors.appScreenColor,
             },
             headerBackTitleVisible: false,
           }}

@@ -1,49 +1,42 @@
-import React, { useEffect, useState, useMemo, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
+  ScrollView,
   TouchableOpacity,
-  Alert,
-  Platform,
   LayoutAnimation,
+  Platform,
   UIManager,
+  TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Animated,
-  FlatList,
+  Alert,
 } from 'react-native';
+import CustomActionSheetPicker from "../../TaComponents/pickers/ActionSheetPicker";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
+import { useDispatch, useSelector } from "react-redux";
+import {
+  MaterialIcons,
+  Ionicons,
+} from "@expo/vector-icons";
 import {
   useLazyGetDailyReimbursementQuery,
   useDailydeimCreateMutation,
-  useLazyCommonDropDownGetQuery, // Used for fetching common dropdown data
-  useLazyInsertCityQuery, // New: Import the hook for insertCity
-  useDailydeimLogicMutation
+  useLazyCommonDropDownGetQuery,
+  useLazyGetAllowanceQuery,
 } from '../../redux/rtk_query/apiSlice';
-import { useDispatch, useSelector } from 'react-redux';
-import {
-  setDailyReimbursementDetails,
-  clearDailyReimbursementDetails,
-  setDailyDiemDropdown,
-  setYnDropdown,
-  setCityDropdown,
-} from '../../redux/slices/ExpenseSlice';
-import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 
 import { getCustomColors } from '../../styles/CustomColors';
-import {
-  verticalScale,
-  horizontalScale,
-  moderateScale,
-} from '../../styles/Metrics';
-import { Fonts } from '../../styles/Fonts';
-import CustomActionSheetPicker from '../../TaComponents/pickers/ActionSheetPicker';
-import ToastMessage from '../../TaComponents/toast/ToastMessage';
-import moment from 'moment';
+import { horizontalScale, verticalScale, moderateScale } from '../../styles/Metrics';
 import * as styless from "../../styles/StyleSheet";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { Fonts } from '../../styles/Fonts';
+import { setTravelExpenseDetails, clearTravelExpenseDetails } from '../../redux/slices/travelExpenseDetailsSlice';
+import ToastMessage from '../../TaComponents/toast/ToastMessage';
+
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -51,30 +44,214 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString.replace(/-/g, '/'));
+    if (isNaN(date.getTime())) {
+      const monthMap = {
+        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+      };
+      const match = dateString.match(/^(\d{4})-(\w{3})-(\d{2}) (\d{2}):(\d{2})$/);
+      if (match) {
+        const [, year, monthAbbr, day, hours, minutes] = match;
+        const monthNum = monthMap[monthAbbr];
+        if (monthNum !== undefined) {
+          const parsedDate = new Date(year, monthNum, day, hours, minutes);
+          if (!isNaN(parsedDate.getTime())) {
+            return `${String(parsedDate.getDate()).padStart(2, '0')}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${parsedDate.getFullYear()} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}`;
+          }
+        }
+      }
+      return dateString;
+    }
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${day}-${month}-${year} ${hours}:${minutes}`;
+  } catch (error) {
+    console.warn("Error formatting date:", dateString, error);
+    return dateString;
+  }
+};
 
+const formatTime = (date) => {
+  if (!date || !(date instanceof Date)) return '';
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
 
-const EditableRow = ({
-  label,
-  value,
-  onChangeText,
-  isEditing,
-  keyboardType = 'default',
-  multiline = false,
-  placeholder = '',
-  isDisabled = false,
-  isDatePicker = false,
-  onPressDatePicker = null,
-  isPicker = false,
-  onPressPicker = null,
-  pickerOptions = [],
-  isRequired = false,
-  styles,
-  CustomColors
-}) => (
+const parseCustomDate = (dateString) => {
+  if (!dateString || dateString === 'N/A') return new Date();
+
+  if (dateString instanceof Date) return dateString;
+
+  const trimmed = typeof dateString === 'string' ? dateString.trim() : '';
+
+  let match = trimmed.match(/^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2})$/);
+  if (match) {
+    const [, day, month, year, hours, minutes] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
+  }
+
+  match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::\d{2})?$/);
+  if (match) {
+    const [, year, month, day, hours, minutes] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes));
+  }
+
+  match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), 0, 0);
+  }
+
+  match = trimmed.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (match) {
+    const [, day, month, year] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), 0, 0);
+  }
+
+  const monthMap = {
+    'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+    'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+  };
+  match = trimmed.match(/^(\d{4})-(\w{3})-(\d{2}) (\d{2}):(\d{2})$/);
+  if (match) {
+    const [, year, monthAbbr, day, hours, minutes] = match;
+    const monthNum = monthMap[monthAbbr];
+    if (monthNum !== undefined) {
+      return new Date(Number(year), monthNum, Number(day), Number(hours), Number(minutes));
+    }
+  }
+
+  try {
+    const fallback = new Date(trimmed.replace(/-/g, '/'));
+    if (!isNaN(fallback.getTime())) return fallback;
+  } catch { }
+
+  console.error("Could not parse date string:", dateString);
+  return new Date();
+};
+
+const formatDateToCustomString = (date) => {
+  if (!date) return null;
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = '00';
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+const formatDateForApi = (dateString) => {
+  if (!dateString) return '';
+  const d = parseCustomDate(dateString);
+  if (isNaN(d.getTime())) {
+    const s = typeof dateString === 'string' ? dateString.trim() : '';
+    return s ? `${s} ` : '';
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day} `;
+};
+
+const formatTimeForApi = (timeString, fallbackDateString) => {
+  if (timeString && typeof timeString === 'string') {
+    const trimmed = timeString.trim();
+    if (/am|pm/i.test(trimmed)) {
+      return trimmed.toUpperCase();
+    }
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})/);
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = match[2];
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+    }
+  }
+  if (fallbackDateString) {
+    const d = parseCustomDate(fallbackDateString);
+    if (!isNaN(d.getTime())) {
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+    }
+  }
+  return '';
+};
+
+const formatYesNoToBinary = (val) => {
+  if (val === 'Yes' || val === '1' || val === 1 || val === true) return '1';
+  return '0';
+};
+
+const parseDateForMinMaxRange = (dateString, isEndDate = false) => {
+  if (!dateString) return null;
+  try {
+    let date = new Date(dateString.replace(/-/g, '/'));
+
+    if (isNaN(date.getTime())) {
+      const monthMap = {
+        'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+        'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+      };
+      const parts = dateString.match(/^(\d{2})-(\w{3})-(\d{4})$/);
+      if (parts) {
+        const [, day, monthAbbr, year] = parts;
+        const monthNum = monthMap[monthAbbr];
+        if (monthNum !== undefined) {
+          date = new Date(Number(year), monthNum, Number(day));
+        } else {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+
+    if (isEndDate) {
+      date.setHours(23, 59, 59, 999);
+    } else {
+      date.setHours(0, 0, 0, 0);
+    }
+    return date;
+  } catch (error) {
+    return null;
+  }
+};
+
+const calculateHoursDifference = (fromDateStr, toDateStr) => {
+  if (!fromDateStr || !toDateStr) return '0.00';
+  const start = parseCustomDate(fromDateStr);
+  const end = parseCustomDate(toDateStr);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return '0.00';
+  const diffInMs = end.getTime() - start.getTime();
+  if (diffInMs < 0) return '0.00';
+  const hours = diffInMs / (1000 * 60 * 60);
+  return hours.toFixed(2);
+};
+
+const EditableRow = ({ label, value, onChangeText, isEditing, keyboardType = 'default', multiline = false, placeholder = '', placeholderTextColor, isDisabled = false, isDatePicker = false, onPressDatePicker = null, isRequired = false, styles, CustomColors }) => (
   <View style={styles.detailItemContainer}>
     <View style={styles.labelContainer}>
       <Text allowFontScaling={false} style={styles.detailLabel}>{label}:</Text>
-      {isRequired && <Text allowFontScaling={false} style={{ color: CustomColors.textRed }}>*</Text>}
+      {isRequired && <Text allowFontScaling={false} style={{ color: CustomColors.dangerRed }}>*</Text>}
     </View>
     {isEditing ? (
       isDatePicker ? (
@@ -87,31 +264,16 @@ const EditableRow = ({
             {value && value !== 'N/A' ? value : placeholder}
           </Text>
         </TouchableOpacity>
-      ) : isPicker ? (
-        <TouchableOpacity
-          onPress={onPressPicker}
-          disabled={isDisabled}
-          style={[styles.editableTextInput, isDisabled && styles.disabledInput]}
-        >
-          <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !value && styles.placeholderText, isDisabled && styles.disabledText]}>
-            {value || placeholder}
-          </Text>
-          <MaterialIcons
-            name="keyboard-arrow-down"
-            size={moderateScale(20)}
-            color={CustomColors.textDarkGray}
-          />
-        </TouchableOpacity>
       ) : (
         <TextInput allowFontScaling={false}
           style={[styles.editableTextInput, multiline && styles.multilineInput, isDisabled && styles.disabledInput]}
-          value={value ? String(value) : ''}
+          value={value !== undefined && value !== null ? String(value) : ''}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
           multiline={multiline}
           textAlignVertical={multiline ? 'top' : 'center'}
           placeholder={placeholder}
-          placeholderTextColor={CustomColors.textLightGray}
+          placeholderTextColor={placeholderTextColor || CustomColors.textLightGray}
           editable={!isDisabled}
         />
       )
@@ -123,82 +285,133 @@ const EditableRow = ({
   </View>
 );
 
-const DailyReimbursement = ({ route }) => {
+const DailyReimbursementScreen = ({ route }) => {
   const expense = route?.params?.expense ?? {};
   const claimdata = route?.params?.claimdata ?? {};
-  const from = route?.params?.from || {}
+  const from = route?.params?.from || {};
   const isDark = useSelector(state => state.theme.isDark);
-  const CustomColors = getCustomColors(isDark)
+  const CustomColors = getCustomColors(isDark);
   const globalStyles = styless.styles(isDark);
-  //jjj
-  //console.log("claimdata",expense.expenseid)
-  //console.log("claimdata",expense.requestercomment)
-  const expenseid = expense.expenseid
-  const requestercomment = expense.requestercomment
   const navigation = useNavigation();
-
-  const tourId = expense?.tourid || claimdata?.id;
+  const tourId = expense?.tourid || claimdata?.id || claimdata?.tourid || expense?.id || route?.params?.tourId;
   const employeeCode = expense?.employee_code || claimdata?.employee_code;
   const employeeName = expense?.employee_name || claimdata?.employee_name;
   const travelNo = expense?.crn_no || claimdata?.id;
 
-  const tourFromDate = expense?.startdate || claimdata?.startdate;
-  const tourToDate = expense?.enddate || claimdata?.enddate;
-  const tourFromDateMS = expense?.startdate_ms || claimdata?.startdate_ms;
+  const initialEmployeeGrade =
+    expense?.empgrade ||
+    expense?.emp_grade ||
+    expense?.employee_grade ||
+    claimdata?.empgrade ||
+    claimdata?.emp_grade ||
+    claimdata?.employee_grade ||
+    claimdata?.maker_data?.grade ||
+    claimdata?.grade ||
+    claimdata?.data?.[0]?.emp_grade ||
+    claimdata?.data?.[0]?.empgrade ||
+    route?.params?.employeeGrade ||
+    route?.params?.empGrade ||
+    '';
+  const [employeeGrade, setEmployeeGrade] = useState(initialEmployeeGrade);
 
-  const tourToDateMS = expense?.enddate_ms || claimdata?.enddate_ms;
-  //console.log("==============>",tourFromDateMS,tourToDateMS)
-  const [isEditable, setIsEditable] = useState(true);
-  const claimStatus = route?.params?.claimStatus;
-  const expenseHeaderData = route?.params?.expense;
+  const expenseid = expense.expenseid ?? null;
+  const requestercomment = expense.requestercomment ?? null;
+  const [getDailyReimbursement, { data, error, isLoading, isFetching }] = useLazyGetDailyReimbursementQuery();
+
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const submitButtonOpacity = useRef(new Animated.Value(1)).current;
+  const [activePickerId, setActivePickerId] = useState(null);
+
+  const [triggerYn] = useLazyCommonDropDownGetQuery();
+  const [ynOptions, setYnOptions] = useState([
+    { name: 'Yes', value: 'Yes' },
+    { name: 'No', value: 'No' },
+  ]);
+
+  const cityOptions = [
+    { name: 'Joka', value: 'Joka' },
+  ];
+
   const [claimStatusId, setClaimStatusId] = useState(null);
-  const dispatch = useDispatch();
-  const dailyReimbursementDetails = useSelector(
-    state => state.expense.details
-  );
-  const dailyDiemDropdownOptions = useSelector(state => state.expense.dailyDiemDropdown);
-  const ynDropdownOptions = useSelector(state => state.expense.ynDropdown);
-  const cityDropdownOptions = useSelector(state => state.expense.cityDropdown);
 
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [currentDateField, setCurrentDateField] = useState(null);
+  const [currentItemIdForDate, setCurrentItemIdForDate] = useState(null);
+
+  const [localAddedItems, setLocalAddedItems] = useState([]);
   const [editedItemData, setEditedItemData] = useState({});
   const [expandedItems, setExpandedItems] = useState({});
-  const [localAddedItems, setLocalAddedItems] = useState([]);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isError, setError] = useState(null);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [activeField, setActiveField] = useState(null); // 'from' or 'to'
-  const [activeItemId, setActiveItemId] = useState(null);
-  const [timePickerValue, setTimePickerValue] = useState(new Date());
 
-  const [showBoardingPicker, setShowBoardingPicker] = useState(false);
-  const [showSubCategoryPicker, setShowSubCategoryPicker] = useState(false);
-  const [showCityPicker, setShowCityPicker] = useState(false);
-  const [activePickerItemId, setActivePickerItemId] = useState(null);
-  const [triggerGetDailyReimbursement] = useLazyGetDailyReimbursementQuery();
-  const [triggerGetEligibleAmount, { isLoading: isEligibleLoading, isError: isEligibleError }] = useDailydeimLogicMutation();
+  const dispatch = useDispatch();
+  const travelExpenseDetails = useSelector(state => state.travelExpenseDetails.details);
 
-  const [
-    triggerDailyReimbursement,
-    { isLoading: isSubmitting, isSuccess: submitSuccess, isError: submitError, error: submitErrorData }
-  ] = useDailydeimCreateMutation();
-  const [triggerDailyDiemDropdown] = useLazyCommonDropDownGetQuery();
-  const [triggerYnDropdown] = useLazyCommonDropDownGetQuery();
-  // New: Use the insertCity query directly
-  const [triggerGetCities, { data: citiesResponse, isLoading: isCitiesLoading, isError: isCitiesError }] = useLazyInsertCityQuery();
+  const minDate = useMemo(() => {
+    if (claimdata?.startdate) {
+      const parsedStartDate = parseDateForMinMaxRange(claimdata.startdate, false);
+      return parsedStartDate || new Date(2000, 0, 1, 0, 0, 0);
+    }
+    return new Date(2000, 0, 1, 0, 0, 0);
+  }, [claimdata?.startdate]);
 
+  const maxDate = useMemo(() => {
+    if (claimdata?.enddate) {
+      const parsedEndDate = parseDateForMinMaxRange(claimdata.enddate, true);
+      return parsedEndDate || new Date(2050, 11, 31, 23, 59, 59);
+    }
+    return new Date(2050, 11, 31, 23, 59, 59);
+  }, [claimdata?.enddate]);
 
-  const [submitButtonOpacity] = useState(new Animated.Value(1));
+  const [triggerGetAllowance] = useLazyGetAllowanceQuery();
+  const [eligibleDailyRate, setEligibleDailyRate] = useState('1500');
+
+  useEffect(() => {
+    const fetchAllowance = async () => {
+      const grade = employeeGrade || initialEmployeeGrade || 'S4';
+      try {
+        const res = await triggerGetAllowance({
+          city: '',
+          employeegrade: grade,
+          expensename: 'Daily Diem',
+          page: 1,
+        }).unwrap();
+        const first = res?.data?.[0];
+        if (first?.elgibleamount) {
+          const rateStr = String(first.elgibleamount);
+          setEligibleDailyRate(rateStr);
+          setEditedItemData(prev => {
+            const updated = { ...prev };
+            Object.keys(updated).forEach(id => {
+              if (!updated[id].eligibleAmount || updated[id].eligibleAmount === '750') {
+                updated[id] = { ...updated[id], eligibleAmount: rateStr };
+              }
+            });
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.warn("Error fetching allowance:", err);
+      }
+    };
+    fetchAllowance();
+  }, [employeeGrade, initialEmployeeGrade, triggerGetAllowance]);
+
+  useEffect(() => {
+    const fetchInitialDropdowns = async () => {
+      try {
+        const ynRes = await triggerYn('yn').unwrap();
+        if (ynRes && ynRes.length) {
+          setYnOptions(ynRes);
+        }
+      } catch (err) { }
+    };
+    fetchInitialDropdowns();
+  }, [triggerYn]);
 
   const styles = StyleSheet.create({
-    keyboardAvoidingContainer: {
+    fullScreenContainer: {
       flex: 1,
-    },
-    flatListOverallContent: {
-      flexGrow: 1,
-      padding: moderateScale(16),
       backgroundColor: CustomColors.appScreenColor,
-      paddingBottom: verticalScale(100),
     },
     sectionCard: {
       backgroundColor: CustomColors.cardBackground,
@@ -224,61 +437,20 @@ const DailyReimbursement = ({ route }) => {
       paddingBottom: verticalScale(10),
       fontFamily: Fonts.bold,
     },
-    dailyItemsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: verticalScale(20),
-      paddingHorizontal: horizontalScale(10),
-    },
-    mainHeading: {
-      fontSize: moderateScale(20),
-      fontWeight: 'bold',
-      color: CustomColors.appThemeColor,
-      marginVertical: verticalScale(15),
-      fontFamily: Fonts.bold,
-      flex: 1,
-    },
-    plusicon: {
-      padding: moderateScale(5),
-    },
-    itemCard: {
-      backgroundColor: CustomColors.cardBackground,
-      borderRadius: moderateScale(12),
-      elevation: 3,
-      shadowColor: CustomColors.textBlack,
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 3,
-      marginBottom: verticalScale(15),
-      overflow: 'hidden',
-    },
-    cardHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: verticalScale(15),
-      paddingHorizontal: horizontalScale(16),
-      backgroundColor: CustomColors.secondaryBlue + '10',
-      borderBottomWidth: 1,
-      borderBottomColor: CustomColors.lightGray,
-    },
-    cardTitle: {
-      fontSize: moderateScale(16),
-      fontFamily: Fonts.semiBold,
-      color: CustomColors.appThemeColor,
-      flex: 1,
-    },
-    cardDetails: {
-      padding: moderateScale(16),
-      paddingTop: verticalScale(10),
-    },
     detailRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       marginBottom: verticalScale(12),
       justifyContent: 'space-between',
       flexWrap: 'wrap',
+    },
+    plusicon: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: verticalScale(12),
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      left: verticalScale(-25)
     },
     boldText: {
       fontWeight: '600',
@@ -288,96 +460,77 @@ const DailyReimbursement = ({ route }) => {
       minWidth: horizontalScale(120),
       fontFamily: Fonts.semiBold,
     },
+    mainHeading: {
+      fontSize: moderateScale(20),
+      fontWeight: 'bold',
+      color: CustomColors.appThemeColor,
+      marginVertical: verticalScale(15),
+      marginHorizontal: verticalScale(20),
+      fontFamily: Fonts.bold,
+    },
+    expenseItemCard: {
+      backgroundColor: CustomColors.cardBackground,
+      borderRadius: moderateScale(12),
+      marginBottom: verticalScale(15),
+      shadowColor: CustomColors.iconBlack,
+      shadowOffset: { width: 0, height: verticalScale(2) },
+      shadowOpacity: 0.05,
+      shadowRadius: moderateScale(6),
+      elevation: 3,
+      overflow: 'hidden',
+      borderColor: CustomColors.lightGray,
+      borderWidth: 1,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: verticalScale(18),
+      paddingHorizontal: horizontalScale(20),
+      backgroundColor: CustomColors.backgroundGray2,
+      borderBottomWidth: 1,
+      borderBottomColor: CustomColors.lightGray,
+    },
+    headerRightContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: horizontalScale(12),
+    },
+    cardTitle: {
+      fontSize: moderateScale(17),
+      fontWeight: '600',
+      color: CustomColors.textDark,
+      flex: 1,
+      paddingRight: horizontalScale(10),
+      fontFamily: Fonts.semiBold,
+    },
+    toggleIcon: {
+      fontSize: moderateScale(22),
+      color: CustomColors.appThemeColor,
+      fontWeight: 'bold',
+    },
+    cardContent: {
+      padding: moderateScale(20),
+      paddingLeft: horizontalScale(25),
+      borderLeftWidth: moderateScale(5),
+      borderLeftColor: CustomColors.lightGray,
+    },
+    detailItemContainer: {
+      marginBottom: verticalScale(12),
+    },
+    detailLabel: {
+      fontWeight: '600',
+      color: CustomColors.textDark,
+      fontSize: moderateScale(15),
+      marginBottom: verticalScale(4),
+      fontFamily: Fonts.semiBold,
+    },
     detailValueText: {
       fontSize: moderateScale(15),
       color: CustomColors.textDarkGray,
       lineHeight: moderateScale(22),
       fontFamily: Fonts.regular,
       paddingHorizontal: horizontalScale(5),
-    },
-    noDataText: {
-      textAlign: 'center',
-      marginTop: moderateScale(30),
-      fontSize: moderateScale(16),
-      color: CustomColors.textDark,
-      padding: moderateScale(20),
-      backgroundColor: CustomColors.cardBackground,
-      borderRadius: moderateScale(8),
-      marginHorizontal: horizontalScale(16),
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: CustomColors.appScreenColor,
-    },
-    loadingText: {
-      fontSize: moderateScale(14),
-      color: CustomColors.textDark,
-      fontFamily: Fonts.regular,
-      marginTop: verticalScale(10),
-    },
-    errorContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: CustomColors.appScreenColor,
-      padding: moderateScale(20),
-    },
-    errorText: {
-      fontSize: moderateScale(16),
-      color: CustomColors.dangerRed,
-      marginBottom: verticalScale(10),
-      textAlign: 'center',
-      fontFamily: Fonts.regular,
-    },
-    retryButton: {
-      backgroundColor: CustomColors.appThemeColor,
-      paddingVertical: verticalScale(10),
-      paddingHorizontal: horizontalScale(20),
-      borderRadius: moderateScale(8),
-      marginTop: verticalScale(10),
-    },
-    retryButtonText: {
-      color: CustomColors.white,
-      fontSize: moderateScale(16),
-      fontFamily: Fonts.bold,
-    },
-    bottomActionBar: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: CustomColors.cardBackground,
-      padding: moderateScale(16),
-      borderTopWidth: 1,
-      borderTopColor: CustomColors.lightGray,
-      alignItems: 'center',
-      elevation: 10,
-      shadowColor: CustomColors.textBlack,
-      shadowOffset: { width: 0, height: -2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 3,
-    },
-    fullWidthButton: {
-      width: '100%',
-      paddingVertical: verticalScale(15),
-      borderRadius: moderateScale(10),
-      alignItems: 'center',
-    },
-    fullWidthButtonText: {
-      color: CustomColors.white,
-      fontSize: moderateScale(18),
-      fontFamily: Fonts.bold,
-    },
-    detailItemContainer: {
-      marginBottom: verticalScale(12),
-    },
-    detailLabel: {
-      fontSize: moderateScale(14),
-      fontFamily: Fonts.semiBold,
-      color: CustomColors.textDark,
-      marginBottom: verticalScale(4),
     },
     editableTextInput: {
       borderWidth: 1,
@@ -394,14 +547,71 @@ const DailyReimbursement = ({ route }) => {
     },
     multilineInput: {
       minHeight: verticalScale(80),
+      textAlignVertical: 'top',
       paddingTop: verticalScale(10),
+      paddingBottom: verticalScale(10),
     },
-    disabledInput: {
-      backgroundColor: CustomColors.disableInput,
+    noItemsText: {
+      fontSize: moderateScale(16),
       color: CustomColors.textGray,
+      textAlign: 'center',
+      marginTop: verticalScale(20),
+      fontStyle: 'italic',
+      fontFamily: Fonts.Italic,
     },
-    disabledText: {
-      color: CustomColors.disableText,
+    bottomActionBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: CustomColors.bottomNavBarColor,
+      paddingVertical: verticalScale(12),
+      paddingHorizontal: horizontalScale(16),
+      borderTopWidth: 1,
+      borderTopColor: CustomColors.lightGray,
+      elevation: 8,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: horizontalScale(12),
+      height: verticalScale(75),
+    },
+    actionButton: {
+      flex: 1,
+      borderRadius: moderateScale(8),
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: verticalScale(48),
+    },
+    submitButton: {
+      backgroundColor: CustomColors.appThemeColor,
+    },
+    backButton: {
+      backgroundColor: CustomColors.mediumGray || '#8C9BA5',
+    },
+    actionButtonText: {
+      color: CustomColors.textWhite,
+      fontWeight: '700',
+      fontSize: moderateScale(16),
+      fontFamily: Fonts.bold,
+    },
+    dropdownLabel: {
+      fontWeight: '600',
+      color: CustomColors.textDark,
+      fontSize: moderateScale(15),
+      marginBottom: verticalScale(4),
+      fontFamily: Fonts.semiBold,
+    },
+    actionSheetTriggerButton: {
+      borderWidth: 1,
+      borderColor: CustomColors.lightGray,
+      borderRadius: moderateScale(8),
+      paddingVertical: verticalScale(12),
+      paddingHorizontal: horizontalScale(12),
+      minHeight: verticalScale(45),
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: verticalScale(12),
     },
     actionSheetTriggerButtonText: {
       fontSize: moderateScale(15),
@@ -412,11 +622,15 @@ const DailyReimbursement = ({ route }) => {
     placeholderText: {
       color: CustomColors.textLightGray,
     },
+    dropdownArrow: {
+      fontSize: moderateScale(16),
+      color: CustomColors.textDarkGray,
+    },
     actionSheetItem: {
       paddingVertical: verticalScale(15),
       paddingHorizontal: horizontalScale(20),
       borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: CustomColors.lightGray,
+      borderBottomColor: CustomColors.backgroundGray,
     },
     actionSheetItemSelected: {
       backgroundColor: CustomColors.primaryBlue + '15',
@@ -429,36 +643,39 @@ const DailyReimbursement = ({ route }) => {
     actionSheetItemSelectedText: {
       fontWeight: 'bold',
       color: CustomColors.primaryBlue,
+      fontFamily: Fonts.bold,
     },
-    keyboardAvoidingContainer: {
-      flex: 1,
-      justifyContent: 'flex-end',
+    disabledText: {
+      color: CustomColors.disableText,
+    },
+    disabledInput: {
+      backgroundColor: CustomColors.disableInput,
     },
     labelContainer: {
       flexDirection: 'row',
       alignItems: 'center',
+      marginBottom: verticalScale(4),
     },
   });
-  useLayoutEffect(() => {
+
+  useEffect(() => {
     navigation.setOptions({
       headerShown: true,
-
       headerStyle: {
         backgroundColor: CustomColors.appThemeColor,
       },
-
       headerTintColor: CustomColors.white,
-
-      // ✅ allowFontScaling applied
       headerTitle: () => (
         <Text
           allowFontScaling={false}
-          style={{
-            ...globalStyles.headerTitle,
-            fontSize: moderateScale(20),
-            fontWeight: "600",
-            color: CustomColors.white,
-          }}
+          style={[
+            globalStyles.headerTitle,
+            {
+              fontSize: moderateScale(20),
+              fontWeight: "600",
+              color: CustomColors.white,
+            },
+          ]}
         >
           Daily Reimbursement
         </Text>
@@ -466,316 +683,396 @@ const DailyReimbursement = ({ route }) => {
     });
 
     return () => {
-      dispatch(clearDailyReimbursementDetails());
+      dispatch(clearTravelExpenseDetails());
     };
   }, [navigation, isDark]);
 
-
-
-
-  useEffect(() => {
-    const fetchDropdownData = async () => {
-      try {
-        // Fetch common dropdowns
-        const [dailydiemRes, ynRes] = await Promise.all([
-          triggerDailyDiemDropdown('dailydiem').unwrap(),
-          triggerYnDropdown('yn').unwrap(),
-        ]);
-
-        // Fetch cities using insertCity endpoint
-        const cityRes = await triggerGetCities({ city_name: '', page: 1 }).unwrap();
-
-        const mappedDailyDiemOptions = (dailydiemRes || []).map(item => ({
-          ...item,
-          label: item.name,
-        }));
-
-        const mappedYnOptions = (ynRes || []).map(item => ({
-          ...item,
-          label: item.name,
-        }));
-
-        // Corrected mapping for city options: Access cityRes.data
-        const mappedCityOptions = (cityRes.data || []).map(item => ({
-          ...item,
-          label: item.name || item.city_name,
-          value: item.name?.toString(),
-        }));
-
-
-        dispatch(setDailyDiemDropdown(mappedDailyDiemOptions));
-        dispatch(setYnDropdown(mappedYnOptions));
-        dispatch(setCityDropdown(mappedCityOptions));
-      } catch (err) {
-        console.error("Failed to fetch dropdown data:", err);
-      }
-    };
-
-    fetchDropdownData();
-  }, [triggerDailyDiemDropdown, triggerYnDropdown, triggerGetCities, dispatch]);
+  const [isEditable, setIsEditable] = useState(true);
 
   useEffect(() => {
-    const fetchData = async () => {
-      if (!tourId) return;
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const result = await triggerGetDailyReimbursement(tourId).unwrap();
-        // //console.log("result?.data?",result?.data)
-        const mappedData = result?.data?.map(item => ({
-          id: item.id,
-          travel_no: item.tour_id?.toString() || '',
-          empcode: employeeCode || '',
-          empname: employeeName || '',
-          boarding_by_organizer: item.boardingbyorganiser || '',
-          sub_category: item.citytype || '',
-          city: item.visitcity || '',
-          from_datetime: item.fromdate
-            ? moment(item.fromdate, "YYYY-MMM-DD HH:mm").format("DD-MMM-YYYY, HH:mm")
-            : '',
-
-          to_datetime: item.todate
-            ? moment(item.todate, "YYYY-MMM-DD HH:mm").format("DD-MMM-YYYY, HH:mm")
-            : '',
-
-          no_of_hours: item.noofhours?.toString() || '',
-          food_allowance: item.foodallowance?.toString() || '',
-          medical_expenses: item.medicalexpense?.toString() || '',
-          bill_no: item.billno || '',
-          remarks: item.remarks || '',
-          claim_amount: item.claimedamount?.toString() || '',
-        })) || [];
-
-        if (mappedData.length === 0 && tourFromDate && tourToDate) {
-          const generatedItems = [];
-          let currentDate = moment(tourFromDate, "DD-MMM-YYYY");
-          const endDate = moment(tourToDate, "DD-MMM-YYYY");
-
-          let tempIdCounter = 0;
-          while (currentDate.isSameOrBefore(endDate, 'day')) {
-            const dateString = currentDate.format('DD-MMM-YYYY');
-
-            generatedItems.push({
-              id: `temp-${tempIdCounter++}-${currentDate.format('YYYYMMDD')}`,
-              travel_no: tourId?.toString() || '',
-              empcode: employeeCode || '',
-              empname: employeeName || '',
-              boarding_by_organizer: '',
-              sub_category: '',
-              city: '',
-              from_datetime: `${dateString}, 00:00`,  // Correct → "15-Jul-2025, 00:00"
-              to_datetime: `${dateString}, 10:00`,
-
-              no_of_hours: '',
-              food_allowance: '',
-              medical_expenses: '',
-              bill_no: '',
-              remarks: '',
-              claim_amount: '',
-              isNew: true,
-            });
-            currentDate.add(1, 'days');
-          }
-
-          dispatch(setDailyReimbursementDetails(generatedItems));
-          const initialEditedData = {};
-          generatedItems.forEach(item => {
-            initialEditedData[item.id] = { ...item };
-          });
-          setEditedItemData(initialEditedData);
-          setHasUnsavedChanges(true);
-        } else {
-          dispatch(setDailyReimbursementDetails(mappedData));
-          const initialEditedData = {};
-          mappedData.forEach(item => {
-            initialEditedData[item.id] = { ...item };
-          });
-          setEditedItemData(initialEditedData);
-          setHasUnsavedChanges(false);
-        }
-      } catch (err) {
-        console.error('Fetch failed:', err);
-        setError(err?.data?.message || 'Something went wrong');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      dispatch(clearDailyReimbursementDetails());
-    };
-  }, [tourId, triggerGetDailyReimbursement, dispatch, employeeCode, employeeName, tourFromDate, tourToDate]);
-
+    if (tourId) {
+      getDailyReimbursement(tourId);
+    }
+  }, [tourId, getDailyReimbursement]);
 
   useEffect(() => {
-    const currentStatusId = Number(claimdata?.claim_status_id); // ✅ Fix: cast to number
-    //console.log("claimStatusId ==> ", currentStatusId);
-
+    const currentStatusId = claimdata?.claim_status_id;
     setClaimStatusId(currentStatusId);
-
     const editableStatuses = [-1, 1, 5];
     const shouldBeEditable = editableStatuses.includes(currentStatusId);
-
     setIsEditable(shouldBeEditable);
-    //console.log("isEditable:", isEditable, "hasUnsavedChanges:", hasUnsavedChanges, "isSubmitting:", isSubmitting);
-
   }, [claimdata]);
 
-
-
-  useEffect(() => {
-    const changesPresent = Object.keys(editedItemData).some(itemId => {
-      const originalItem = dailyReimbursementDetails?.find(e => e.id?.toString() === itemId);
-      const editedItem = editedItemData[itemId];
-
-      if (itemId.toString().startsWith('temp-')) return true;
-
-      return JSON.stringify(originalItem) !== JSON.stringify(editedItem);
-    }) || localAddedItems.length > 0;
-
-    setHasUnsavedChanges(changesPresent);
-  }, [editedItemData, localAddedItems, dailyReimbursementDetails]);
+  const [
+    dailydeimCreate,
+    { isLoading: isSubmitting }
+  ] = useDailydeimCreateMutation();
 
   useEffect(() => {
-    if (submitSuccess) {
-      ToastMessage('Daily reimbursement submitted successfully!');
-      setHasUnsavedChanges(false);
-      triggerGetDailyReimbursement(tourId);
-    }
-  }, [submitSuccess, triggerGetDailyReimbursement, tourId]);
-
-  useEffect(() => {
-    if (submitError) {
-      // console.error('Submission failed:', submitErrorData);
-      ToastMessage('Failed to submit daily reimbursement.');
-    }
-  }, [submitError, submitErrorData]);
-  const getEligibleAmount = useCallback(async (item, itemIndex) => {
-    try {
-      if (!item.from_datetime || !item.to_datetime) {
-        ToastMessage("From and To date/time are required", "error");
-        return false;
+    if (!isFetching && !isLoading && data) {
+      if (
+        data?.employee_grade ||
+        data?.empgrade ||
+        data?.emp_grade ||
+        data?.grade
+      ) {
+        setEmployeeGrade(
+          data.employee_grade ||
+          data.empgrade ||
+          data.emp_grade ||
+          data.grade
+        );
       }
+      const initialEditedData = {};
+      data.data.forEach(item => {
+        const fromDateStr = item.fromdate || '';
+        const toDateStr = item.todate || '';
+        const calculatedHours = calculateHoursDifference(fromDateStr, toDateStr);
+        const sysHours = item.syshours !== undefined && item.syshours !== null
+          ? String(item.syshours)
+          : (item.systemHours || calculatedHours);
 
-      const fromMoment = moment(item.from_datetime, "DD-MMM-YYYY, HH:mm");
-      const toMoment = moment(item.to_datetime, "DD-MMM-YYYY, HH:mm");
+        const parseBinaryToYesNo = (val) => {
+          if (val === '1' || val === 1 || val === 'Yes') return 'Yes';
+          return 'No';
+        };
 
-      if (!fromMoment.isValid() || !toMoment.isValid()) {
-        ToastMessage("Invalid date/time format", "error");
-        return false;
-      }
-
-      const payload = {
-        citytype: item.sub_category || "",
-        boardingbyorganiser: item.boarding_by_organizer === "YES" ? "YES" : "NO",
-        fromdate: fromMoment.format("YYYY-MM-DD HH:mm:ss"),
-        todate: toMoment.format("YYYY-MM-DD HH:mm:ss"),
-        tourgid: item.travel_no,
-        expensegid: expenseid,
-      };
-
-      const response = await triggerGetEligibleAmount(payload).unwrap();
-
-      const eligible = response?.Eligible_amount;
-      const sys_hours = response?.noofhours;
-      const days = response?.noofdays;
-
-      const updatedDetails = dailyReimbursementDetails.map((row, idx) => {
-        if (idx === itemIndex) {
-          return {
-            ...row,
-            eligibleamount: eligible,
-            no_of_hours: sys_hours,
-            noofdays: days,
-          };
-        }
-        return row;
+        initialEditedData[item.id] = {
+          ...item,
+          sno: item.sno || '',
+          city: item.city || 'Joka',
+          fromdate: fromDateStr,
+          fromtime: item.fromtime ? formatTimeForApi(item.fromtime, fromDateStr) : '',
+          todate: toDateStr,
+          totime: item.totime ? formatTimeForApi(item.totime, toDateStr) : '',
+          systemHours: sysHours,
+          noOfHours: item.noofhours !== undefined && item.noofhours !== null
+            ? String(item.noofhours)
+            : (item.noOfHours !== undefined && item.noOfHours !== null
+              ? String(item.noOfHours)
+              : (item.no_of_hours !== undefined && item.no_of_hours !== null
+                ? String(item.no_of_hours)
+                : '')),
+          accommodationProvided: parseBinaryToYesNo(item.accbybank ?? item.accommodationProvided),
+          boardingProvided: parseBinaryToYesNo(item.boardingbybank ?? item.boardingProvided),
+          boardingDeclaration: parseBinaryToYesNo(item.declaration ?? item.boardingDeclaration),
+          noOfLeaveDays: item.isleave !== undefined && item.isleave !== null
+            ? String(item.isleave)
+            : (item.noOfLeaveDays !== undefined ? String(item.noOfLeaveDays) : '0'),
+          eligibleAmount: item.eligibleamount !== undefined
+            ? String(item.eligibleamount)
+            : (item.eligibleAmount !== undefined ? String(item.eligibleAmount) : '750'),
+          claimedamount: item.claimedamount !== undefined ? String(item.claimedamount) : '',
+        };
       });
-
-      dispatch(setDailyReimbursementDetails(updatedDetails));
-
-      if (sys_hours < 9) {
-        ToastMessage("Minimum 9 Hours Required For Eligible", "error");
-      }
-
-      return true;
-    } catch (err) {
-      console.error("Eligible Amount Error:", err);
-      ToastMessage(err?.data?.message || "Failed to get eligible amount", "error");
-      return false;
+      setEditedItemData(initialEditedData);
+      setHasUnsavedChanges(false);
+      dispatch(setTravelExpenseDetails(data.data));
     }
-  }, [dailyReimbursementDetails, dispatch, triggerGetEligibleAmount]);
+  }, [isFetching, isLoading, data]);
 
-
-  const DropdownItem = ({ options, onPress, setPickerStatus, selected }) => {
-    const isSelected = selected === options.value;
-    return (
-      <TouchableOpacity
-        style={[
-          styles.actionSheetItem,
-          isSelected && styles.actionSheetItemSelected,
-        ]}
-        onPress={() => {
-          onPress(options.value);
-          setPickerStatus(false);
-        }}
-      >
-        <Text allowFontScaling={false}
-          style={[
-            styles.actionSheetItemText,
-            isSelected && styles.actionSheetItemSelectedText,
-          ]}
-        >
-          {options.label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-  const handleInputChange = useCallback((value, itemId, field) => {
-    setEditedItemData(prevData => {
-      const newData = { ...prevData };
-      newData[itemId] = {
-        ...(newData[itemId] || {}),
-        [field]: value,
-      };
-      return newData;
-    });
-    setHasUnsavedChanges(true);
-  }, []);
-
-  const validateNumericInput = (value, fieldName) => {
-    if (
-      fieldName.includes('allowance') ||
-      fieldName.includes('expenses') ||
-      fieldName.includes('amount') ||
-      fieldName.includes('no_of_hours')
-    ) {
-      if (value === '') return true;
-      return !isNaN(value) && parseFloat(value) >= 0;
-    }
-    return true;
-  };
-
-  const toggleExpand = useCallback((id) => {
+  const toggleExpand = (itemToToggle) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedItems(prev => ({
       ...prev,
-      [id]: !prev[id]
+      [itemToToggle.id]: !prev[itemToToggle.id]
     }));
-  }, []);
+  };
 
-  const handleDeleteItem = useCallback(itemId => {
+  const ActionSheetPickerItem = React.memo(({ options, onPress, setPickerStatus, selected, isDisabled = false }) => (
+    <TouchableOpacity
+      style={[styles.actionSheetItem, selected === options.value && styles.actionSheetItemSelected]}
+      onPress={() => {
+        if (!isDisabled) {
+          onPress(options);
+          setPickerStatus(false);
+        }
+      }}
+      disabled={isDisabled}
+    >
+      <Text allowFontScaling={false} style={[styles.actionSheetItemText, selected === options.value && styles.actionSheetItemSelectedText, isDisabled && styles.disabledText]}>
+        {options.name}
+      </Text>
+    </TouchableOpacity>
+  ));
+
+  const handleChange = (itemId, field, value) => {
+    setEditedItemData(prev => {
+      const newEditedItemData = {
+        ...prev,
+        [itemId]: {
+          ...(prev[itemId] || {}),
+          [field]: value
+        }
+      };
+
+      if (field === 'noOfHours') {
+        const cleanVal = typeof value === 'string' ? value.replace(/[^0-9.]/g, '') : value;
+        const currentSysHours = parseFloat(
+          newEditedItemData[itemId].systemHours ||
+          calculateHoursDifference(newEditedItemData[itemId].fromdate, newEditedItemData[itemId].todate)
+        ) || 0;
+
+        const enteredHours = parseFloat(cleanVal);
+
+        if (!isNaN(enteredHours) && enteredHours > currentSysHours) {
+          newEditedItemData[itemId].noOfHours = '';
+          ToastMessage(`No of Hours cannot be greater than System Calculated No of Hours (${currentSysHours.toFixed(2)}).`);
+        } else {
+          newEditedItemData[itemId].noOfHours = cleanVal;
+        }
+      }
+
+      if (field === 'fromdate' || field === 'todate') {
+        const currentFromDateStr = newEditedItemData[itemId].fromdate;
+        const currentToDateStr = newEditedItemData[itemId].todate;
+
+        const fromDateObj = parseCustomDate(currentFromDateStr);
+        const toDateObj = parseCustomDate(currentToDateStr);
+
+        if (!isNaN(fromDateObj.getTime()) && !isNaN(toDateObj.getTime())) {
+          if (field === 'fromdate' && fromDateObj.getTime() > toDateObj.getTime()) {
+            newEditedItemData[itemId].todate = formatDateToCustomString(fromDateObj);
+            Alert.alert(
+              "Date Adjustment",
+              "To Date/Time has been adjusted to match From Date/Time as it cannot be prior to it."
+            );
+          } else if (field === 'todate' && toDateObj.getTime() < fromDateObj.getTime()) {
+            newEditedItemData[itemId].fromdate = formatDateToCustomString(toDateObj);
+            Alert.alert(
+              "Date Adjustment",
+              "From Date/Time has been adjusted to match To Date/Time as it cannot be after it."
+            );
+          }
+        }
+
+        const calculated = calculateHoursDifference(
+          newEditedItemData[itemId].fromdate,
+          newEditedItemData[itemId].todate
+        );
+        newEditedItemData[itemId].systemHours = calculated;
+
+        const sysHoursNum = parseFloat(calculated) || 0;
+        const currentNoOfHoursNum = parseFloat(newEditedItemData[itemId].noOfHours);
+        if (!isNaN(currentNoOfHoursNum) && currentNoOfHoursNum > sysHoursNum) {
+          newEditedItemData[itemId].noOfHours = '';
+          ToastMessage('No of Hours cleared as it exceeds new System Calculated No of Hours.');
+        }
+
+        if (field === 'fromdate' && !newEditedItemData[itemId].fromtime) {
+          newEditedItemData[itemId].fromtime = formatTimeForApi(null, newEditedItemData[itemId].fromdate);
+        }
+        if (field === 'todate' && !newEditedItemData[itemId].totime) {
+          newEditedItemData[itemId].totime = formatTimeForApi(null, newEditedItemData[itemId].todate);
+        }
+      }
+
+      return newEditedItemData;
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const showDatepicker = (itemId, field, minDate, maxDate) => {
+    const isTempItem = itemId?.toString().startsWith('temp-');
+    if (!isEditable && !isTempItem) return;
+
+    setCurrentItemIdForDate(itemId);
+    setCurrentDateField(field);
+    const currentVal = parseCustomDate(editedItemData[itemId]?.[field]);
+
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: currentVal,
+        mode: "date",
+        is24Hour: true,
+        display: "default",
+        minimumDate: minDate,
+        maximumDate: maxDate,
+        onChange: (event, selectedDate) => {
+          if (event.type === "dismissed" || !selectedDate) return;
+          DateTimePickerAndroid.open({
+            value: selectedDate,
+            mode: "time",
+            is24Hour: true,
+            display: "default",
+            minimumDate: minDate,
+            maximumDate: maxDate,
+            onChange: (event2, selectedTime) => {
+              if (event2.type === "dismissed" || !selectedTime) return;
+              const combined = new Date(selectedDate);
+              combined.setHours(selectedTime.getHours());
+              combined.setMinutes(selectedTime.getMinutes());
+              handleChange(itemId, field, formatDateToCustomString(combined));
+              if (field === 'fromdate') {
+                handleChange(itemId, 'fromtime', formatTimeForApi(null, combined));
+              } else if (field === 'todate') {
+                handleChange(itemId, 'totime', formatTimeForApi(null, combined));
+              }
+            },
+          });
+        },
+      });
+    } else {
+      setShowDatePicker(true);
+    }
+  };
+
+  const handleDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || parseCustomDate(editedItemData[currentItemIdForDate]?.[currentDateField]);
+    setShowDatePicker(Platform.OS === 'ios');
+    if (event.type === "set") {
+      handleChange(currentItemIdForDate, currentDateField, formatDateToCustomString(currentDate));
+      if (currentDateField === 'fromdate') {
+        handleChange(currentItemIdForDate, 'fromtime', formatTimeForApi(null, currentDate));
+      } else if (currentDateField === 'todate') {
+        handleChange(currentItemIdForDate, 'totime', formatTimeForApi(null, currentDate));
+      }
+    }
+  };
+
+  const handleSubmitAllChanges = async () => {
+    try {
+      const invalidItems = [];
+      const expensesToSubmit = Object.values(editedItemData).map((item, index) => {
+        const sysHours = parseFloat(
+          item.systemHours || calculateHoursDifference(item.fromdate, item.todate)
+        ) || 0;
+        const noOfHoursVal = parseFloat(item.noOfHours);
+
+        if (
+          !item.city ||
+          !item.fromdate ||
+          !item.todate ||
+          item.noOfHours === undefined ||
+          item.noOfHours === null ||
+          String(item.noOfHours).trim() === '' ||
+          isNaN(noOfHoursVal) ||
+          noOfHoursVal <= 0 ||
+          noOfHoursVal > sysHours ||
+          item.noOfLeaveDays === undefined ||
+          item.noOfLeaveDays === '' ||
+          isNaN(parseFloat(item.claimedamount)) ||
+          parseFloat(item.claimedamount) <= 0
+        ) {
+          invalidItems.push(index + 1);
+        }
+
+        const fromDateFormatted = formatDateForApi(item.fromdate);
+        const toDateFormatted = formatDateForApi(item.todate);
+        const fromTimeFormatted = formatTimeForApi(item.fromtime, item.fromdate);
+        const toTimeFormatted = formatTimeForApi(item.totime, item.todate);
+
+        const accbybank = formatYesNoToBinary(item.accommodationProvided ?? item.accbybank);
+        const boardingbybank = formatYesNoToBinary(item.boardingProvided ?? item.boardingbybank);
+        let declaration = formatYesNoToBinary(item.boardingDeclaration ?? item.declaration);
+        if (accbybank === '1' && boardingbybank === '1') {
+          declaration = '0';
+        }
+
+        const payloadItem = {
+          tour_id: Number(item.tour_id || item.tourgid || item.tourid || tourId) || 0,
+          tourid: Number(item.tour_id || item.tourgid || item.tourid || tourId) || 0,
+          tourgid: Number(item.tour_id || item.tourgid || item.tourid || tourId) || 0,
+          claimedamount: parseFloat(item.claimedamount) || 0,
+          requestercomment: requestercomment || item.requestercomment || 'Daily Reimbursement',
+          city: (item.city || 'JOKA').trim().toUpperCase(),
+          fromdate: fromDateFormatted,
+          fromtime: fromTimeFormatted,
+          todate: toDateFormatted,
+          totime: toTimeFormatted,
+          syshours: sysHours,
+          noofhours: String(item.noOfHours ?? ''),
+          isleave: String(item.noOfLeaveDays ?? item.isleave ?? '0'),
+          accbybank,
+          boardingbybank,
+          declaration,
+          expenseid: expenseid ? Number(expenseid) : 2,
+          eligibleamount: parseFloat(item.eligibleAmount ?? item.eligibleamount) || parseFloat(eligibleDailyRate) || 1500,
+          gstno: item.gstno || '',
+          invoicedate: item.invoicedate ?? null,
+          invoiceno: item.invoiceno ?? null,
+        };
+
+        if (item.id && !String(item.id).startsWith('temp-')) {
+          payloadItem.id = item.id;
+        }
+
+        return payloadItem;
+      });
+
+      if (invalidItems.length > 0) {
+        ToastMessage(`Please fill all required fields for Daily Reimbursement Item(s): ${invalidItems.join(', ')}`);
+        return;
+      }
+
+      if (!expensesToSubmit.length) {
+        ToastMessage("No valid reimbursement items to submit.");
+        return;
+      }
+
+      const apiPayload = {
+        data: expensesToSubmit
+      };
+     console.log("Submitting payload:", apiPayload);
+      const result = await dailydeimCreate(apiPayload).unwrap();
+      if (!result || result?.code === 'UNEXPECTED_ERROR') {
+        throw new Error(result?.description || result?.message || 'Server rejected the request.');
+      }
+
+      setHasUnsavedChanges(false);
+      ToastMessage(result?.message || 'Daily reimbursement details submitted successfully!');
+      if (tourId) {
+        getDailyReimbursement(tourId);
+      }
+      navigation.goBack();
+
+    } catch (err) {
+      console.error("Submit error", err);
+      ToastMessage(err?.data?.description || err?.data?.message || err?.message || 'Submission failed. Please try again.');
+    }
+  };
+
+  const handleAddItem = () => {
+    const tempId = `temp-${Date.now()}`;
+
+    const newItem = {
+      id: tempId,
+      sno: localAddedItems.length + (travelExpenseDetails?.length || 0) + 1,
+      city: 'Joka',
+      fromdate: '',
+      fromtime: '',
+      todate: '',
+      totime: '',
+      systemHours: '0.00',
+      noOfHours: '',
+      accommodationProvided: 'No',
+      boardingProvided: 'No',
+      boardingDeclaration: 'No',
+      noOfLeaveDays: '0',
+      eligibleAmount: eligibleDailyRate || '1500',
+      claimedamount: '',
+    };
+
+    setLocalAddedItems(prev => [...prev, newItem]);
+    setExpandedItems(prev => ({
+      ...prev,
+      [tempId]: true
+    }));
+    setEditedItemData(prev => ({
+      ...prev,
+      [tempId]: newItem
+    }));
+  };
+
+  const handleDeleteItem = (itemId) => {
     Alert.alert(
-      'Confirm Delete',
-      'Are you sure you want to delete this expense item?',
+      "Confirm Delete",
+      "Are you sure you want to delete this daily reimbursement item?",
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: "Cancel", style: "cancel" },
         {
-          text: 'Delete',
-          style: 'destructive',
+          text: "Delete",
+          style: "destructive",
           onPress: () => {
             setEditedItemData(prev => {
               const updated = { ...prev };
@@ -791,402 +1088,393 @@ const DailyReimbursement = ({ route }) => {
 
             setLocalAddedItems(prev => prev.filter(item => item.id !== itemId));
             setHasUnsavedChanges(true);
-          },
-        },
+          }
+        }
       ]
     );
-  }, []);
-
-  const allDailyReimbursementItems = useMemo(() => {
-    const existingItems = dailyReimbursementDetails.map(item => ({
-      ...item,
-      food_allowance: String(item.food_allowance || ''),
-      medical_expenses: String(item.medical_expenses || ''),
-      claim_amount: String(item.claim_amount || ''),
-      travel_no: String(item.travel_no || ''),
-      no_of_hours: String(item.no_of_hours || ''),
-    }));
-    return [...existingItems, ...localAddedItems];
-  }, [dailyReimbursementDetails, localAddedItems]);
-
-
-
-  const handleSubmit = async () => {
-    if (!hasUnsavedChanges || !isEditable || isSubmitting) return;
-
-    const itemsToSubmit = Object.values(editedItemData).filter(item => {
-      const originalItem = dailyReimbursementDetails.find(e => e.id === item.id);
-      return item.id.toString().startsWith('temp-') || JSON.stringify(originalItem) !== JSON.stringify(item);
-    });
-
-    if (itemsToSubmit.length === 0) {
-      ToastMessage("There are no unsaved changes to submit.");
-      return;
-    }
-
-    const allValidationErrors = [];
-    const mandatoryFields = ['boarding_by_organizer', 'sub_category', 'city', 'food_allowance', 'medical_expenses', 'claim_amount'];
-
-    for (const item of itemsToSubmit) {
-      const itemErrors = [];
-
-      for (const field of mandatoryFields) {
-        if (!item[field] || String(item[field]).trim() === '') {
-          itemErrors.push(`"${field}" is mandatory.`);
-        }
-      }
-
-      const numericFields = ['food_allowance', 'medical_expenses', 'claim_amount', 'no_of_hours'];
-      for (const numField of numericFields) {
-        if (item[numField] && isNaN(parseFloat(item[numField]))) {
-          itemErrors.push(`"${numField}" must be a valid number.`);
-        }
-      }
-
-      if (itemErrors.length > 0) allValidationErrors.push(...itemErrors);
-    }
-
-    if (allValidationErrors.length > 0) {
-      ToastMessage("Please fill all mandatory fields.");
-      return;
-    }
-
-    try {
-      for (let i = 0; i < itemsToSubmit.length; i++) {
-        const item = itemsToSubmit[i];
-        const success = await getEligibleAmount(item, i);
-        if (!success) return;
-      }
-
-      const updatedItems = itemsToSubmit.map(item => {
-        const reduxItem = dailyReimbursementDetails.find(e => e.id === item.id || e.temp_id === item.id);
-
-        const fromMoment = moment(item.from_datetime, "DD-MMM-YYYY, HH:mm");
-        const toMoment = moment(item.to_datetime, "DD-MMM-YYYY, HH:mm");
-
-        return {
-          tour_id: item.travel_no,
-          claimedamount: parseFloat(item.claim_amount) || 0,
-          requestercomment: requestercomment || "",
-          city: null,
-
-          fromdate: fromMoment.isValid() ? fromMoment.format("YYYY-MM-DD HH:mm:ss") : null,
-          fromtime: fromMoment.isValid() ? fromMoment.format("HH:mm") : null,
-          todate: toMoment.isValid() ? toMoment.format("YYYY-MM-DD HH:mm:ss") : null,
-          totime: toMoment.isValid() ? toMoment.format("HH:mm") : null,
-
-          syshours: parseFloat(reduxItem?.no_of_hours) || 0,
-          expensegid: expenseid,
-          eligibleamount: parseFloat(reduxItem?.eligibleamount) || 0,
-
-          boardingbyorganiser: item.boarding_by_organizer === "YES" ? "YES" : "NO",
-          billno: item.bill_no || null,
-          remarks: item.remarks || null,
-          visitcity: item.city || "",
-          citytype: item.sub_category || "",
-          foodallowance: parseFloat(item.food_allowance) || 0,
-          medicalexpense: parseFloat(item.medical_expenses) || 0
-        };
-      });
-
-      const payload = { data: updatedItems };
-      const response = await triggerDailyReimbursement(payload).unwrap();
-
-      setHasUnsavedChanges(false);
-      ToastMessage(response?.message || "Submission Successful!");
-
-      navigation.goBack();
-    } catch (err) {
-      // const errorMessage = err?.data?.message || "An error occurred during submission. Please try again.";
-      // ToastMessage(`Submission Failed: ${errorMessage}`);
-    }
   };
 
+  useEffect(() => {
+    const hasChanges = Object.keys(editedItemData).some(itemId => {
+      const originalItem = travelExpenseDetails?.find(e => e.id === itemId);
+      const editedItem = editedItemData[itemId];
 
+      return JSON.stringify(originalItem) !== JSON.stringify(editedItem);
+    });
 
-  const renderDailyReimbursementItem = useCallback(({ item }) => {
-    const isExpanded = expandedItems[item.id];
-    const currentItemData = editedItemData[item.id] || item;
-    const isTempItem = item.id?.toString().startsWith('temp-');
-    const isItemEditable = isEditable || isTempItem;
+    setHasUnsavedChanges(hasChanges || localAddedItems.length > 0);
+  }, [editedItemData, localAddedItems]);
 
-    const handleNumericInputValidate = (text, key, itemId, stateKey) => {
-      const updatedValue = text.replace(/[^0-9.]/g, ''); // remove non-numeric input
+  useLayoutEffect(() => {
+    const hasChanges = Object.keys(editedItemData).some(itemId => {
+      const originalItem = travelExpenseDetails?.find(e => e.id === itemId);
+      const editedItem = editedItemData[itemId];
 
-      setEditedItemData(prev => {
-        const updatedItem = {
-          ...prev[itemId],
-          [key]: updatedValue
-        };
+      if (itemId.toString().startsWith('temp-')) return true;
 
-        // Auto calculate claim_amount only if food/medical updated
-        if (key === 'food_allowance' || key === 'medical_expenses') {
-          const food = parseFloat(updatedItem.food_allowance) || 0;
-          const medical = parseFloat(updatedItem.medical_expenses) || 0;
-          updatedItem.claim_amount = (food + medical).toFixed(2);
-        }
+      return JSON.stringify(originalItem) !== JSON.stringify(editedItem);
+    });
 
-        return {
-          ...prev,
-          [itemId]: updatedItem
-        };
-      });
-    };
+    setHasUnsavedChanges(hasChanges || localAddedItems.length > 0);
+  }, [editedItemData, localAddedItems, travelExpenseDetails]);
 
-
+  if (isLoading || isFetching) {
     return (
-      <View key={item.id} style={styles.itemCard}>
-        <TouchableOpacity
-          onPress={() => toggleExpand(item.id)}
-          onLongPress={() => isItemEditable && handleDeleteItem(item.id)}
-          style={styles.cardHeader}
-          activeOpacity={0.7}
-        >
-          <Text allowFontScaling={false} style={styles.cardTitle}>
-            {currentItemData.city || 'New Item'} ({currentItemData.from_datetime || 'Date'})
-          </Text>
-          <MaterialIcons
-            name={isExpanded ? "expand-less" : "expand-more"}
-            size={28}
-            color={CustomColors.appThemeColor}
-          />
-        </TouchableOpacity>
-
-        {isExpanded && (
-          <View style={styles.cardDetails}>
-            <EditableRow
-              label="Boarding by Organizer"
-              value={currentItemData.boarding_by_organizer}
-              isPicker={true}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onPressPicker={() => {
-                setActivePickerItemId(item.id);
-                setShowBoardingPicker(true);
-              }}
-              placeholder="Select Boarding Option"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Sub Category"
-              value={currentItemData.sub_category}
-              isPicker={true}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onPressPicker={() => {
-                setActivePickerItemId(item.id);
-                setShowSubCategoryPicker(true);
-              }}
-              placeholder="Select Sub Category"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="City"
-              value={currentItemData.city}
-              isPicker={true}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onPressPicker={() => {
-                setActivePickerItemId(item.id);
-                setShowCityPicker(true);
-              }}
-              placeholder="Select City"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="From Date and Time"
-              value={moment(currentItemData.from_datetime, "DD-MMM-YYYY, HH:mm").format("DD-MMM-YYYY, HH:mm")}
-              isDatePicker={true}
-              isEditing={isItemEditable}
-              onPressDatePicker={() => {
-                setActiveField('from'); // or 'to'
-                setActiveItemId(item.id);
-                const initial = moment(item.from_datetime, "DD-MMM-YYYY, HH:mm").toDate();
-                setTimePickerValue(initial);
-                setShowTimePicker(true);
-              }}
-              placeholder="HH:mm"
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-
-            <EditableRow
-              label="To Date and Time"
-              value={moment(currentItemData.to_datetime, "DD-MMM-YYYY, HH:mm").format("DD-MMM-YYYY, HH:mm")}
-              isDatePicker={true}
-              isEditing={isItemEditable}
-              onPressDatePicker={() => {
-                setActiveField('to');
-                setActiveItemId(item.id);
-                const initial = moment(item.to_datetime, "DD-MMM-YYYY, HH:mm").toDate();
-                setTimePickerValue(initial);
-                setShowTimePicker(true);
-              }}
-              placeholder="HH:mm"
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-
-            <EditableRow
-              label="No of Hours"
-              value={currentItemData.no_of_hours}
-              onChangeText={text => handleNumericInputValidate(text, 'no_of_hours', item.id, 'no_of_hours')}
-              isEditing={isItemEditable}
-              keyboardType="numeric"
-              isDisabled={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Food Allowance"
-              value={currentItemData.food_allowance}
-              onChangeText={text => handleNumericInputValidate(text, 'food_allowance', item.id, 'food_allowance')}
-              isEditing={isItemEditable}
-              keyboardType="numeric"
-              isDisabled={!isItemEditable}
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Medical Expenses"
-              value={currentItemData.medical_expenses}
-              isRequired={true}
-              onChangeText={text => handleNumericInputValidate(text, 'medical_expenses', item.id, 'medical_expenses')}
-              isEditing={isItemEditable}
-              keyboardType="numeric"
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Bill Number"
-              value={currentItemData.bill_no}
-              onChangeText={text => handleInputChange(text, item.id, 'bill_no')}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Remarks"
-              value={currentItemData.remarks}
-              onChangeText={text => handleInputChange(text, item.id, 'remarks')}
-              isEditing={isItemEditable}
-              multiline={true}
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            {/* <EditableRow
-              label="Claim Amount (INR)"
-              value={currentItemData.claim_amount}
-              onChangeText={text => handleNumericInputValidate(text, 'claim_amount', item.id, 'claim_amount')}
-              isEditing={isItemEditable}
-              keyboardType="numeric"
-              isDisabled={!isItemEditable}
-              isRequired={true}
-
-            /> */}
-            <EditableRow
-              label="Claim Amount (INR)"
-              value={currentItemData.claim_amount}
-              isEditing={false} // Prevents editing
-              isDisabled={true} // Also disables touch
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-
-          </View>
-        )}
-      </View>
-    );
-  }, [editedItemData, expandedItems, isEditable, toggleExpand, handleDeleteItem, handleInputChange, validateNumericInput]);
-
-  const ListHeader = useCallback(() => (
-    <>
-      <View style={styles.sectionCard}>
-        <Text allowFontScaling={false} style={styles.sectionTitle}>Travel Overview</Text>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Tour No:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{travelNo || 'N/A'}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Employee Code:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{employeeCode || 'N/A'}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Employee Name:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{employeeName || 'N/A'}</Text>
-        </View>
-      </View>
-
-      <View style={styles.dailyItemsHeader}>
-        <Text allowFontScaling={false} style={styles.mainHeading}>Daily Reimbursement Items</Text>
-      </View>
-
-      {allDailyReimbursementItems.length === 0 && (
-        <Text allowFontScaling={false} style={styles.noDataText}>No daily reimbursement items found for the selected tour dates.</Text>
-      )}
-    </>
-  ), [travelNo, employeeCode, employeeName, allDailyReimbursementItems.length]);
-
-  const ListFooter = useCallback(() => (
-    <View style={{ height: verticalScale(100) }} />
-  ), []);
-
-
-  if (isLoading || isCitiesLoading) { // Also check for city data loading
-    return (
-      <View style={styles.loadingContainer}>
+      <View style={globalStyles.loadingContainer}>
         <ActivityIndicator size="large" color={CustomColors.appThemeColor} />
-        <Text allowFontScaling={false} style={styles.loadingText}>Please Wait...</Text>
+        <Text allowFontScaling={false} style={globalStyles.loadingText}>Please wait...</Text>
       </View>
     );
   }
 
-
-
   return (
     <KeyboardAvoidingView
-      style={styles.keyboardAvoidingContainer}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.fullScreenContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : verticalScale(110)}
     >
-      <FlatList
-        data={allDailyReimbursementItems}
-        keyExtractor={item => item.id?.toString()}
-        renderItem={renderDailyReimbursementItem}
-        ListHeaderComponent={ListHeader}
-        ListFooterComponent={ListFooter}
-        contentContainerStyle={styles.flatListOverallContent}
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: verticalScale(100), paddingHorizontal: horizontalScale(16) }}
         keyboardShouldPersistTaps="handled"
-      />
+      >
+        <View style={styles.sectionCard}>
+          <Text allowFontScaling={false} style={styles.sectionTitle}>Travel Details</Text>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>Travel No:</Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>{travelNo || 'N/A'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>Employee Code:</Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>{employeeCode || 'N/A'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>Employee Name:</Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>{employeeName || 'N/A'}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>Employee Grade:</Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>{employeeGrade || 'N/A'}</Text>
+          </View>
+        </View>
+
+        <View style={styles.detailRow}>
+          <Text allowFontScaling={false} style={styles.mainHeading}>Daily Reimbursement Items</Text>
+          {isEditable && (
+            <TouchableOpacity
+              onPress={handleAddItem}
+              style={styles.plusicon}
+            >
+              <MaterialIcons name="add-circle" size={28} color={CustomColors.appThemeColor} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {(travelExpenseDetails?.length || 0) + localAddedItems.length === 0 ? (
+          <Text allowFontScaling={false} style={styles.noItemsText}>Tap "+" to add a new daily reimbursement item.</Text>
+        ) : (
+          [...travelExpenseDetails, ...localAddedItems].map((item, index) => {
+            const itemDataForDisplay = editedItemData[item.id] || item;
+            const isTempItem = item.id?.toString().startsWith('temp-');
+            const isItemEditable = isEditable || isTempItem;
+
+            return (
+              <View key={item.id || index} style={styles.expenseItemCard}>
+                <View style={styles.cardHeader}>
+                  <TouchableOpacity
+                    onPress={() => toggleExpand(item)}
+                    style={{ flex: 1 }}
+                    activeOpacity={0.8}
+                  >
+                    <Text allowFontScaling={false} style={styles.cardTitle}>
+                      Reimbursement Item {index + 1}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.headerRightContainer}>
+                    {isItemEditable && (
+                      <TouchableOpacity onPress={() => handleDeleteItem(item.id)}>
+                        <Ionicons name="trash-outline" size={22} color={CustomColors.dangerRed || '#D93025'} />
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => toggleExpand(item)}>
+                      <Text allowFontScaling={false} style={styles.toggleIcon}>
+                        {expandedItems[item.id] ? '▲' : '▼'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {expandedItems[item.id] && (
+                  <View style={styles.cardContent}>
+                    {/* S.No */}
+                    <EditableRow
+                      label="S.No"
+                      value={itemDataForDisplay.sno || index + 1}
+                      onChangeText={(text) => handleChange(item.id, 'sno', text)}
+                      isEditing={true}
+                      isDisabled={!isItemEditable}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* City Dropdown */}
+                    <Text allowFontScaling={false} style={styles.dropdownLabel}>
+                      City:{<Text allowFontScaling={false} style={{ color: CustomColors.dangerRed }}>*</Text>}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.actionSheetTriggerButton}
+                      onPress={() => setActivePickerId(`${item.id}-city`)}
+                      disabled={!isItemEditable}
+                    >
+                      <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !itemDataForDisplay.city && styles.placeholderText, !isItemEditable && styles.disabledText]}>
+                        {cityOptions.find(opt => opt.value === itemDataForDisplay.city)?.name || itemDataForDisplay.city || "Joka"}
+                      </Text>
+                      <Text allowFontScaling={false} style={styles.dropdownArrow}>▼</Text>
+                    </TouchableOpacity>
+
+                    <CustomActionSheetPicker
+                      pickerStatus={activePickerId === `${item.id}-city`}
+                      setPickerStatus={() => setActivePickerId(null)}
+                      title="Select City"
+                      optionsData={cityOptions}
+                      RenderItem={ActionSheetPickerItem}
+                      onPress={(selectedItem) => handleChange(item.id, 'city', selectedItem.value)}
+                      selected={itemDataForDisplay.city || 'Joka'}
+                      isDisabled={!isItemEditable}
+                    />
+
+                    {/* From Date */}
+                    <EditableRow
+                      label="From Date"
+                      value={formatDateTime(itemDataForDisplay.fromdate)}
+                      onChangeText={(text) => handleChange(item.id, 'fromdate', text)}
+                      isEditing={true}
+                      placeholder='DD-MM-YYYY HH:MM'
+                      isDatePicker={true}
+                      onPressDatePicker={isItemEditable ? () => showDatepicker(item.id, 'fromdate', minDate, maxDate) : null}
+                      isDisabled={false}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* From Time */}
+                    <EditableRow
+                      label="From Time"
+                      value={itemDataForDisplay.fromtime || (itemDataForDisplay.fromdate ? formatTimeForApi(null, itemDataForDisplay.fromdate) : '')}
+                      onChangeText={(text) => handleChange(item.id, 'fromtime', text)}
+                      isEditing={true}
+                      placeholder="12:00 AM"
+                      isDisabled={!isItemEditable}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* To Date */}
+                    <EditableRow
+                      label="To Date"
+                      value={formatDateTime(itemDataForDisplay.todate)}
+                      onChangeText={(text) => handleChange(item.id, 'todate', text)}
+                      isEditing={true}
+                      placeholder='DD-MM-YYYY HH:MM'
+                      isDatePicker={true}
+                      onPressDatePicker={isItemEditable ? () => showDatepicker(item.id, 'todate', parseCustomDate(itemDataForDisplay.fromdate), maxDate) : null}
+                      isDisabled={false}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* To Time */}
+                    <EditableRow
+                      label="To Time"
+                      value={itemDataForDisplay.totime || (itemDataForDisplay.todate ? formatTimeForApi(null, itemDataForDisplay.todate) : '')}
+                      onChangeText={(text) => handleChange(item.id, 'totime', text)}
+                      isEditing={true}
+                      placeholder="06:47 AM"
+                      isDisabled={!isItemEditable}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* System Calculated No of Hours */}
+                    <EditableRow
+                      label="System Calculated No of Hours"
+                      value={itemDataForDisplay.systemHours || calculateHoursDifference(itemDataForDisplay.fromdate, itemDataForDisplay.todate)}
+                      isEditing={true}
+                      keyboardType="numeric"
+                      isDisabled={true}
+                      placeholder="0.00"
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* No of Hours */}
+                    <EditableRow
+                      label="No of Hours"
+                      value={itemDataForDisplay.noOfHours}
+                      onChangeText={(text) => handleChange(item.id, 'noOfHours', text)}
+                      isEditing={true}
+                      keyboardType="numeric"
+                      placeholder="0.00"
+                      isDisabled={!isItemEditable}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* Accommodation Provided By Bank */}
+                    <Text allowFontScaling={false} style={styles.dropdownLabel}>Accommodation Provided By Bank:</Text>
+                    <TouchableOpacity
+                      style={styles.actionSheetTriggerButton}
+                      onPress={() => setActivePickerId(`${item.id}-accommodationProvided`)}
+                      disabled={!isItemEditable}
+                    >
+                      <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !isItemEditable && styles.disabledText]}>
+                        {ynOptions.find(opt => opt.value === itemDataForDisplay.accommodationProvided)?.name || itemDataForDisplay.accommodationProvided || "No"}
+                      </Text>
+                      <Text allowFontScaling={false} style={styles.dropdownArrow}>▼</Text>
+                    </TouchableOpacity>
+
+                    <CustomActionSheetPicker
+                      pickerStatus={activePickerId === `${item.id}-accommodationProvided`}
+                      setPickerStatus={() => setActivePickerId(null)}
+                      title="Accommodation Provided By Bank"
+                      optionsData={ynOptions}
+                      RenderItem={ActionSheetPickerItem}
+                      onPress={(selectedItem) => handleChange(item.id, 'accommodationProvided', selectedItem.value)}
+                      selected={itemDataForDisplay.accommodationProvided}
+                      isDisabled={!isItemEditable}
+                    />
+
+                    {/* Boarding Provided By Bank */}
+                    <Text allowFontScaling={false} style={styles.dropdownLabel}>Boarding Provided By Bank:</Text>
+                    <TouchableOpacity
+                      style={styles.actionSheetTriggerButton}
+                      onPress={() => setActivePickerId(`${item.id}-boardingProvided`)}
+                      disabled={!isItemEditable}
+                    >
+                      <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !isItemEditable && styles.disabledText]}>
+                        {ynOptions.find(opt => opt.value === itemDataForDisplay.boardingProvided)?.name || itemDataForDisplay.boardingProvided || "No"}
+                      </Text>
+                      <Text allowFontScaling={false} style={styles.dropdownArrow}>▼</Text>
+                    </TouchableOpacity>
+
+                    <CustomActionSheetPicker
+                      pickerStatus={activePickerId === `${item.id}-boardingProvided`}
+                      setPickerStatus={() => setActivePickerId(null)}
+                      title="Boarding Provided By Bank"
+                      optionsData={ynOptions}
+                      RenderItem={ActionSheetPickerItem}
+                      onPress={(selectedItem) => handleChange(item.id, 'boardingProvided', selectedItem.value)}
+                      selected={itemDataForDisplay.boardingProvided}
+                      isDisabled={!isItemEditable}
+                    />
+
+                    {/* Declaration For Boarding Submitted */}
+                    <Text allowFontScaling={false} style={styles.dropdownLabel}>Declaration For Boarding Submitted:</Text>
+                    <TouchableOpacity
+                      style={styles.actionSheetTriggerButton}
+                      onPress={() => setActivePickerId(`${item.id}-boardingDeclaration`)}
+                      disabled={!isItemEditable}
+                    >
+                      <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !isItemEditable && styles.disabledText]}>
+                        {ynOptions.find(opt => opt.value === itemDataForDisplay.boardingDeclaration)?.name || itemDataForDisplay.boardingDeclaration || "No"}
+                      </Text>
+                      <Text allowFontScaling={false} style={styles.dropdownArrow}>▼</Text>
+                    </TouchableOpacity>
+
+                    <CustomActionSheetPicker
+                      pickerStatus={activePickerId === `${item.id}-boardingDeclaration`}
+                      setPickerStatus={() => setActivePickerId(null)}
+                      title="Declaration For Boarding Submitted"
+                      optionsData={ynOptions}
+                      RenderItem={ActionSheetPickerItem}
+                      onPress={(selectedItem) => handleChange(item.id, 'boardingDeclaration', selectedItem.value)}
+                      selected={itemDataForDisplay.boardingDeclaration}
+                      isDisabled={!isItemEditable}
+                    />
+
+                    {/* No of Leave Days */}
+                    <EditableRow
+                      label="No of Leave Days"
+                      value={itemDataForDisplay.noOfLeaveDays}
+                      onChangeText={(text) => handleChange(item.id, 'noOfLeaveDays', text)}
+                      isEditing={true}
+                      keyboardType='numeric'
+                      placeholder="0"
+                      isDisabled={!isItemEditable}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* Eligible Amount */}
+                    <EditableRow
+                      label="Eligible Amount"
+                      value={itemDataForDisplay.eligibleAmount || '750'}
+                      onChangeText={(text) => handleChange(item.id, 'eligibleAmount', text)}
+                      isEditing={true}
+                      keyboardType='numeric'
+                      placeholder="750"
+                      isDisabled={!isItemEditable}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+
+                    {/* Claim Amount */}
+                    <EditableRow
+                      label="Claim Amount"
+                      value={itemDataForDisplay.claimedamount}
+                      onChangeText={(text) => handleChange(item.id, 'claimedamount', text)}
+                      isEditing={true}
+                      keyboardType='numeric'
+                      isDisabled={!isItemEditable}
+                      isRequired={true}
+                      placeholderTextColor={CustomColors.textGray}
+                      CustomColors={CustomColors}
+                      styles={styles}
+                    />
+                  </View>
+                )}
+              </View>
+            );
+          })
+        )}
+
+        {Platform.OS === "ios" && showDatePicker && currentItemIdForDate && (
+          <DateTimePicker
+            testID="dateTimePicker"
+            value={
+              parseCustomDate(editedItemData[currentItemIdForDate]?.[currentDateField]) || new Date()
+            }
+            mode="datetime"
+            is24Hour={true}
+            display="default"
+            minimumDate={minDate}
+            maximumDate={maxDate}
+            onChange={handleDateChange}
+          />
+        )}
+      </ScrollView>
 
       {from !== 'Checker' && (
         <Animated.View style={[styles.bottomActionBar, { opacity: submitButtonOpacity }]}>
           <TouchableOpacity
             style={[
-              styles.fullWidthButton,
+              styles.actionButton,
+              styles.submitButton,
               {
                 backgroundColor:
                   hasUnsavedChanges && !isSubmitting && isEditable
@@ -1194,110 +1482,26 @@ const DailyReimbursement = ({ route }) => {
                     : CustomColors.mediumGray
               }
             ]}
-            onPress={handleSubmit}
+            onPress={handleSubmitAllChanges}
             disabled={!hasUnsavedChanges || isSubmitting || !isEditable}
           >
-            <Text allowFontScaling={false} style={styles.fullWidthButtonText}>
+            <Text allowFontScaling={false} style={styles.actionButtonText}>
               {isSubmitting ? 'Submitting...' : 'Submit'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, styles.backButton]}
+            onPress={() => navigation.goBack()}
+          >
+            <Text allowFontScaling={false} style={styles.actionButtonText}>
+              Back
             </Text>
           </TouchableOpacity>
         </Animated.View>
       )}
-
-
-
-      {activePickerItemId && (
-        <CustomActionSheetPicker
-          pickerStatus={showBoardingPicker}
-          setPickerStatus={setShowBoardingPicker}
-          title="Select Boarding Option"
-          optionsData={ynDropdownOptions}
-          RenderItem={DropdownItem}
-          onPress={(value) => {
-            handleInputChange(value, activePickerItemId, 'boarding_by_organizer');
-          }}
-          selected={editedItemData[activePickerItemId]?.boarding_by_organizer}
-        />
-      )}
-
-      {activePickerItemId && (
-        <CustomActionSheetPicker
-          pickerStatus={showSubCategoryPicker}
-          setPickerStatus={setShowSubCategoryPicker}
-          title="Select Sub Category"
-          optionsData={dailyDiemDropdownOptions}
-          RenderItem={DropdownItem}
-          onPress={(value) => {
-            handleInputChange(value, activePickerItemId, 'sub_category');
-          }}
-          selected={editedItemData[activePickerItemId]?.sub_category}
-        />
-      )}
-
-      {activePickerItemId && (
-        <CustomActionSheetPicker
-          pickerStatus={showCityPicker}
-          setPickerStatus={setShowCityPicker}
-          title="Select City"
-          optionsData={cityDropdownOptions}
-          RenderItem={DropdownItem}
-          onPress={(value) => {
-            handleInputChange(value, activePickerItemId, 'city');
-          }}
-          selected={editedItemData[activePickerItemId]?.city}
-        />
-
-      )}
-      {/* Time Picker Modal for From Time */}
-      {showTimePicker && (
-        <DateTimePicker
-          value={timePickerValue}
-          mode="time"
-          is24Hour={true}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(event, selectedTime) => {
-            if (event.type === 'dismissed') {
-              setShowTimePicker(false);
-              return;
-            }
-
-            setShowTimePicker(false);
-
-            const selected = moment(selectedTime || timePickerValue);
-
-            setEditedItemData(prev => {
-              const updated = { ...prev };
-              const item = updated[activeItemId];
-              if (!item) return prev;
-
-              const existingDateStr =
-                activeField === 'from' ? item.from_datetime : item.to_datetime;
-
-              // Extract existing date part and combine with new time
-              const existingMoment = moment(existingDateStr, "DD-MMM-YYYY, HH:mm");
-              const updatedDateTime = moment(existingMoment)
-                .set({
-                  hour: selected.hour(),
-                  minute: selected.minute(),
-                  second: 0,
-                })
-                .format("DD-MMM-YYYY, HH:mm");
-
-              if (activeField === 'from') {
-                item.from_datetime = updatedDateTime;
-              } else {
-                item.to_datetime = updatedDateTime;
-              }
-
-              return updated;
-            });
-          }}
-        />
-      )}
-
-
     </KeyboardAvoidingView>
   );
 };
 
-export default DailyReimbursement;
+export default DailyReimbursementScreen;

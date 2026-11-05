@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 
 const initialState = {
   modules: [],       // Store the module list here
-  moduleId: null,   
+  moduleId: null,
   loading: false,
   error: null,
 };
@@ -12,6 +12,7 @@ const userModulesSlice = createSlice({
   initialState,
   reducers: {
     setUserModules: (state, action) => {
+      console.log("userModulesSlice", action.payload);
       state.modules = action.payload;
     },
     setModuleId: (state, action) => {

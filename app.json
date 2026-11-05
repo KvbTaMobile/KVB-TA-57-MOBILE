@@ -4,14 +4,14 @@
     "slug": "KVB",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/images/logo.jpg",
+    "icon": "./src/assets/images/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/images/logo.jpg",
+        "foregroundImage": "./src/assets/images/logo.png",
         "backgroundColor": "#ffffff"
       },
       "permissions": [
@@ -73,7 +73,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "4213fa02-7ae6-4ed8-85be-dab32e73cc59"
+        "projectId": "a2b4fdb8-0a92-421f-8292-c79dcff75693"
       }
     }
   }

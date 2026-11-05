@@ -435,6 +435,7 @@ const CustomActionSheetPicker = ({
                                         />
                                     )}
                                     keyboardShouldPersistTaps="always"
+                                    nestedScrollEnabled={true}
                                     showsVerticalScrollIndicator={false}
                                     contentContainerStyle={
                                         listData.length === 0 ? { flex: 1 } : { paddingBottom: 8 }

@@ -48,6 +48,15 @@ export const baseQueryWithRefresh = async (args, api, extraOptions) => {
     };
   }
   if (error) {
+    const isCanceled =
+      error?.status === "FETCH_ERROR" &&
+      (String(error?.error || "").toLowerCase().includes("cancel") ||
+       String(error?.error || "").toLowerCase().includes("abort"));
+
+    if (isCanceled) {
+      return result;
+    }
+
     const status = error?.status || "unknown";
 
     const backendMessage =
@@ -62,9 +71,9 @@ export const baseQueryWithRefresh = async (args, api, extraOptions) => {
     ToastMessage(message, true);
 
     const requestUrl = meta?.request?.url || "";
-    const isLoginApi = requestUrl.includes("/auth_token");
+    const isAuthApi = requestUrl.includes("/auth_token") || requestUrl.includes("/get_public_key");
 
-    if ((status === 401 || status === 403) && !isLoginApi) {
+    if ((status === 401 || status === 403) && !isAuthApi) {
       api.dispatch(logout());
 
       setTimeout(() => {

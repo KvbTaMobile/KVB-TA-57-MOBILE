@@ -16,10 +16,10 @@ import CustomActionSheetPicker from '../../TaComponents/pickers/ActionSheetPicke
 
 const RADIO_OPTIONS = [
   { value: 1, display: "Self" },
-  { value: 0, display: "On Behalf Of" },
+  { value: 0, display: "Onbehalf" },
 ];
 
-const SelfOrOnBehalfModal = ({ visible, onSubmit }) => {
+const SelfOrOnBehalfModal = ({ visible, onSubmit, onClose, title = "Add Onbehalf Of" }) => {
   const isDark = useSelector((state) => state.theme.isDark);
   const CustomColors = getCustomColors(isDark);
 
@@ -195,7 +195,7 @@ const SelfOrOnBehalfModal = ({ visible, onSubmit }) => {
     });
   };
 
-  const styles = getStyles(CustomColors);
+  const styles = getStyles(CustomColors, isDark);
 
   const RenderBranchItem = ({ options, onPress, selected, setPickerStatus }) => {
     const isSelected = selected?.value === options.value;
@@ -236,11 +236,25 @@ const SelfOrOnBehalfModal = ({ visible, onSubmit }) => {
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={() => {}}
+      onRequestClose={() => {
+        if (typeof onClose === 'function') onClose();
+      }}
     >
       <View style={styles.overlay}>
         <View style={styles.container}>
-          <Text allowFontScaling={false} style={styles.title}>Onbehalf Of</Text>
+          <View style={styles.headerRow}>
+            <Text allowFontScaling={false} style={styles.title}>{title}</Text>
+            {typeof onClose === 'function' && (
+              <TouchableOpacity
+                onPress={onClose}
+                style={styles.closeButton}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="close" size={22} color={CustomColors.textBlack || "#1e293b"} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.headerDivider} />
 
           <View style={styles.radioRow}>
             {RADIO_OPTIONS.map((opt) => (
@@ -342,7 +356,7 @@ const SelfOrOnBehalfModal = ({ visible, onSubmit }) => {
   );
 };
 
-const getStyles = (CustomColors) =>
+const getStyles = (CustomColors, isDark) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
@@ -356,21 +370,41 @@ const getStyles = (CustomColors) =>
       borderRadius: moderateScale(12),
       padding: moderateScale(20),
     },
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+      paddingVertical: verticalScale(4),
+    },
+    closeButton: {
+      position: "absolute",
+      right: 0,
+      top: verticalScale(2),
+      padding: moderateScale(4),
+    },
+    headerDivider: {
+      height: 1,
+      backgroundColor: isDark ? "#334155" : "#e2e8f0",
+      marginTop: verticalScale(8),
+      marginBottom: verticalScale(16),
+    },
     title: {
-      fontSize: moderateScale(18),
+      fontSize: moderateScale(17),
       fontWeight: "700",
-      marginBottom: verticalScale(15),
       textAlign: "center",
-      color: CustomColors.textDark,
+      color: CustomColors.textDark || "#1e293b",
     },
     radioRow: {
       flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
       marginBottom: verticalScale(15),
+      gap: horizontalScale(30),
     },
     radioOption: {
       flexDirection: "row",
       alignItems: "center",
-      marginRight: horizontalScale(20),
     },
     radioCircle: {
       width: moderateScale(18),

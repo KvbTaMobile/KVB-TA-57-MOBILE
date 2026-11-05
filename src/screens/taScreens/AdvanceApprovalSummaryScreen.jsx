@@ -57,8 +57,8 @@ const AdvanceApprovalSummaryScreen = ({ navigation, route }) => {
   const [triggerSummary, { isFetching }] = apiHooks.useLazyGetAdvanceApprovalSummaryQuery
     ? apiHooks.useLazyGetAdvanceApprovalSummaryQuery()
     : apiHooks.useLazyTravelApproveSummaryQuery
-    ? apiHooks.useLazyTravelApproveSummaryQuery()
-    : [() => ({ unwrap: async () => ({ data: [] }) }), { isFetching: false }];
+      ? apiHooks.useLazyTravelApproveSummaryQuery()
+      : [() => ({ unwrap: async () => ({ data: [] }) }), { isFetching: false }];
 
   const statusOptions = [
     { label: "Pending", value: 2 },

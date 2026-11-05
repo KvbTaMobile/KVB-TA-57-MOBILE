@@ -25,11 +25,13 @@ import {
 import { Fonts } from '../../styles/Fonts';
 import CustomActionSheetPicker from '../../TaComponents/pickers/ActionSheetPicker';
 import ToastMessage from '../../TaComponents/toast/ToastMessage';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+
 import {
   useGetLocalConvQuery,
-  useLocalConvCreateMutation, useLazyCommonDropDownGetQuery, useLocalConvEligibleAmtMutation
+  useLocalConvCreateMutation,
+  useLazyCommonDropDownGetQuery,
+  useLocalConvEligibleAmtMutation,
+  useDeleteLocalConvMutation,
 } from '../../redux/rtk_query/apiSlice';
 import {
   setLocalConveyanceExpenses,
@@ -46,32 +48,64 @@ import {
   setLocalConveyanceHasUnsavedChanges,
   resetLocalConveyanceState,
 } from '../../redux/slices/ExpenseSlice';
-import * as styless from "../../styles/StyleSheet";
+import * as styless from '../../styles/StyleSheet';
+
+// Date Helpers
 const formatDateToDDMMYYYY = (dateObj) => {
   if (!dateObj || isNaN(dateObj.getTime())) {
     return '';
   }
   const day = String(dateObj.getDate()).padStart(2, '0');
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+
   const month = monthNames[dateObj.getMonth()];
   const year = dateObj.getFullYear();
   return `${day}-${month}-${year}`;
 };
+
 const parseDDMMYYYYToDate = (dateString) => {
   if (!dateString) return new Date();
   const parts = dateString.split('-');
   if (parts.length !== 3) return new Date();
   const day = parseInt(parts[0], 10);
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const monthIndex = monthNames.findIndex(m => m.toLowerCase() === parts[1].toLowerCase());
+  const monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  const monthIndex = monthNames.findIndex(
+    (m) => m.toLowerCase() === parts[1].toLowerCase()
+  );
   const year = parseInt(parts[2], 10);
-  if (monthIndex === -1 || isNaN(day) || isNaN(year)) return new Date();
+  if (
+    monthIndex === -1 ||
+    isNaN(day) ||
+    isNaN(year)
+  )
+    return new Date();
   const date = new Date(year, monthIndex, day);
-  if (isNaN(date.getTime()) || date.getDate() !== day || date.getMonth() !== monthIndex || date.getFullYear() !== year) {
+  if (
+    isNaN(date.getTime()) ||
+    date.getDate() !== day ||
+    date.getMonth() !== monthIndex ||
+    date.getFullYear() !== year
+  ) {
     return new Date();
   }
   return date;
 };
+
+const formatDateToYYYYMMDD = (dateObj) => {
+  if (!dateObj) return '';
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -79,6 +113,7 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// Reusable Editable Row Component
 const EditableRow = ({
   label,
   value,
@@ -92,15 +127,23 @@ const EditableRow = ({
   onPressDatePicker = null,
   isPicker = false,
   onPressPicker = null,
-  pickerOptions = [],
   isRequired = false,
   styles,
-  CustomColors
+  CustomColors,
 }) => (
   <View style={styles.detailItemContainer}>
     <View style={styles.labelContainer}>
-      <Text allowFontScaling={false} style={styles.detailLabel}>{label}:</Text>
-      {isRequired && <Text allowFontScaling={false} style={{ color: CustomColors.dangerRed }}>*</Text>}
+      <Text allowFontScaling={false} style={styles.detailLabel}>
+        {label}:
+      </Text>
+      {isRequired && (
+        <Text
+          allowFontScaling={false}
+          style={{ color: CustomColors.dangerRed, marginLeft: 2 }}
+        >
+          *
+        </Text>
+      )}
     </View>
     {isEditing ? (
       isDatePicker ? (
@@ -109,7 +152,14 @@ const EditableRow = ({
           disabled={isDisabled}
           style={[styles.editableTextInput, isDisabled && styles.disabledInput]}
         >
-          <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !value && styles.placeholderText, isDisabled && styles.disabledText]}>
+          <Text
+            allowFontScaling={false}
+            style={[
+              styles.actionSheetTriggerButtonText,
+              !value && styles.placeholderText,
+              isDisabled && styles.disabledText,
+            ]}
+          >
             {value && value !== 'N/A' ? value : placeholder}
           </Text>
         </TouchableOpacity>
@@ -119,18 +169,30 @@ const EditableRow = ({
           disabled={isDisabled}
           style={[styles.editableTextInput, isDisabled && styles.disabledInput]}
         >
-          <Text allowFontScaling={false} style={[styles.actionSheetTriggerButtonText, !value && styles.placeholderText, isDisabled && styles.disabledText]}>
+          <Text
+            allowFontScaling={false}
+            style={[
+              styles.actionSheetTriggerButtonText,
+              !value && styles.placeholderText,
+              isDisabled && styles.disabledText,
+            ]}
+          >
             {value || placeholder}
           </Text>
           <MaterialIcons
             name="keyboard-arrow-down"
             size={moderateScale(20)}
-            color={CustomColors.textDarkGray}
+            color={isDisabled ? CustomColors.textLightGray : CustomColors.textDarkGray}
           />
         </TouchableOpacity>
       ) : (
-        <TextInput allowFontScaling={false}
-          style={[styles.editableTextInput, multiline && styles.multilineInput, isDisabled && styles.disabledInput]}
+        <TextInput
+          allowFontScaling={false}
+          style={[
+            styles.editableTextInput,
+            multiline && styles.multilineInput,
+            isDisabled && styles.disabledInput,
+          ]}
           value={value ? String(value) : ''}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
@@ -142,73 +204,128 @@ const EditableRow = ({
         />
       )
     ) : (
-      <Text allowFontScaling={false} style={[styles.detailValueText, isDisabled && styles.disabledText]}>
+      <Text
+        allowFontScaling={false}
+        style={[styles.detailValueText, isDisabled && styles.disabledText]}
+      >
         {value || 'N/A'}
       </Text>
     )}
   </View>
 );
+
 const LocalConveyanceExpenseScreen = ({ route }) => {
   const navigation = useNavigation();
-  const isDark = useSelector(state => state.theme.isDark);
-  const CustomColors = getCustomColors(isDark)
+  const isDark = useSelector((state) => state.theme.isDark);
+  const CustomColors = getCustomColors(isDark);
   const globalStyles = styless.styles(isDark);
   const dispatch = useDispatch();
+
+  const localConvState = useSelector(
+    (state) => (state.expense && state.expense.localConveyance) || {}
+  );
   const {
-    expenses,
-    editedItemData,
-    hasUnsavedChanges,
-    expandedItems,
-    showSubCategoryPicker,
-    showDatePicker,
-    activePickerItemId,
-    activeDateField,
-    datePickerValue,
-  } = useSelector(state => state.expense.localConveyance);
+    expenses = [],
+    editedItemData = {},
+    hasUnsavedChanges = false,
+    expandedItems = {},
+    showDatePicker = false,
+    activePickerItemId = null,
+    datePickerValue = '',
+  } = localConvState;
+
+  // Picker modal controls
+  const [activePickerField, setActivePickerField] = useState(null); // 'modeOfTravel' | 'subCategory' | 'center' | 'onwardReturn'
+  const [pickerModalVisible, setPickerModalVisible] = useState(false);
+
   const [claimStatusId, setClaimStatusId] = useState(null);
   const [isEditable, setIsEditable] = useState(true);
+
   const expenseFromRoute = route?.params?.expense ?? {};
-  const expense = route.params || {};
-  const expenseid = expenseFromRoute.expenseid;
-  const requestercomment = expenseFromRoute.requestercomment;
   const claimdata = route?.params?.claimdata ?? {};
-  const from = route?.params?.from || {}
-  //console.log('hhhhhhiii',from)
-  const tourId = expense?.tourid || claimdata?.id;
+  const from = route?.params?.from || {};
+
+  const expenseid =
+    Number(
+      expenseFromRoute?.expenseid ||
+      expenseFromRoute?.expense_id ||
+      expenseFromRoute?.expensegid ||
+      route?.params?.expenseid ||
+      route?.params?.expense_id ||
+      route?.params?.expensegid ||
+      4
+    ) || 4;
+
+  const requestercomment = expenseFromRoute.requestercomment;
+
+  const tourId =
+    route?.params?.tourId ||
+    expenseFromRoute?.tourid ||
+    expenseFromRoute?.tour_id ||
+    claimdata?.tourid ||
+    claimdata?.id ||
+    route?.params?.tour_id ||
+    route?.params?.tourgid ||
+    4796;
   const employeeCode = expenseFromRoute?.employee_code || claimdata?.employee_code;
   const employeeName = expenseFromRoute?.employee_name || claimdata?.employee_name;
-  const travelNo = expenseFromRoute?.tourid || claimdata?.id;
-  const [
-    triggerGetModeOfTravel,
-    { data: modeOfTravelData, isLoading: isLoadingModeOfTravel, isError: isModeOfTravelError }
-  ] = useLazyCommonDropDownGetQuery();
+  const employeeGrade =
+    claimdata?.empgrade ||
+    claimdata?.emp_grade ||
+    expenseFromRoute?.empgrade ||
+    expenseFromRoute?.emp_grade ||
+    claimdata?.grade ||
+    expenseFromRoute?.grade ||
+    '';
+  const employeeDesignation =
+    claimdata?.designation ||
+    claimdata?.empdesignation ||
+    expenseFromRoute?.designation ||
+    expenseFromRoute?.empdesignation ||
+    '';
+  const travelNo =
+    route?.params?.tourId ||
+    expenseFromRoute?.tourid ||
+    expenseFromRoute?.tour_id ||
+    claimdata?.tourid ||
+    claimdata?.id ||
+    tourId;
+
+  const [triggerDropdownGet] = useLazyCommonDropDownGetQuery();
   const [
     triggerEligibleAmountCalculation,
-    { isLoading: isEligibleAmountCalculating, error: eligibleAmountError },
+    { isLoading: isEligibleAmountCalculating },
   ] = useLocalConvEligibleAmtMutation();
-  const localConveyanceList = useSelector(
-    state => state.expense.localConveyance.expenses
-  );
+
   const deletedItemIds = useSelector(
-    state => state.expense.localConveyance.deletedItemIds || []
+    (state) => state.expense?.localConveyance?.deletedItemIds || []
   );
 
   const {
     data: fetchedConveyanceData,
     isLoading: isFetchingConveyance,
     isSuccess: isConveyanceSuccess,
-    isError: isConveyanceError,
-    error: conveyanceError,
     refetch: refetchConveyanceData,
   } = useGetLocalConvQuery(travelNo, {
     skip: !travelNo,
   });
-  const [
-    localConvCreate,
-    {
-      isLoading: isCreatingConveyance,
-    }
-  ] = useLocalConvCreateMutation();
+
+  const [localConvCreate, { isLoading: isCreatingConveyance }] =
+    useLocalConvCreateMutation();
+  const [deleteLocalConv] = useDeleteLocalConvMutation();
+
+
+  const [modeOfTravelOptions, setModeOfTravelOptions] = useState([]);
+  const [onwardReturnOptions, setOnwardReturnOptions] = useState([]);
+  const [trainSubCategoryOptions, setTrainSubCategoryOptions] = useState([]);
+  const [roadSubCategoryOptions, setRoadSubCategoryOptions] = useState([]);
+  const [centerOptions, setCenterOptions] = useState([]);
+
+  const subCategoryMap = {
+    Train: trainSubCategoryOptions,
+    Road: roadSubCategoryOptions,
+  };
+
   const styles = StyleSheet.create({
     keyboardAvoidingContainer: {
       flex: 1,
@@ -217,7 +334,7 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       flexGrow: 1,
       padding: moderateScale(16),
       backgroundColor: CustomColors.appScreenColor,
-      paddingBottom: verticalScale(100),
+      paddingBottom: verticalScale(120),
     },
     sectionCard: {
       backgroundColor: CustomColors.cardBackground,
@@ -231,7 +348,7 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       elevation: 5,
       borderLeftWidth: moderateScale(8),
       borderLeftColor: CustomColors.appThemeColor,
-      margin: horizontalScale(10)
+      margin: horizontalScale(10),
     },
     sectionTitle: {
       fontSize: moderateScale(22),
@@ -282,11 +399,36 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       borderBottomWidth: 1,
       borderBottomColor: CustomColors.lightGray,
     },
+    cardHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    sNoBadge: {
+      backgroundColor: CustomColors.appThemeColor,
+      borderRadius: moderateScale(12),
+      paddingHorizontal: horizontalScale(8),
+      paddingVertical: verticalScale(2),
+      marginRight: horizontalScale(10),
+    },
+    sNoText: {
+      color: CustomColors.white,
+      fontSize: moderateScale(12),
+      fontFamily: Fonts.bold,
+    },
     cardTitle: {
       fontSize: moderateScale(16),
       fontFamily: Fonts.semiBold,
       color: CustomColors.appThemeColor,
       flex: 1,
+    },
+    cardHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    deleteIconBtn: {
+      padding: moderateScale(4),
+      marginRight: horizontalScale(8),
     },
     cardDetails: {
       padding: moderateScale(16),
@@ -384,28 +526,35 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       left: 0,
       right: 0,
       backgroundColor: CustomColors.cardBackground,
-      paddingVertical: verticalScale(15),
-      paddingHorizontal: horizontalScale(20),
+      paddingVertical: verticalScale(12),
+      paddingHorizontal: horizontalScale(16),
       borderTopWidth: 1,
       borderTopColor: CustomColors.lightGray,
       shadowColor: CustomColors.textBlack,
       shadowOffset: { width: 0, height: -2 },
       shadowOpacity: 0.1,
       shadowRadius: 3,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    bottomButton: {
+      flex: 1,
+      paddingVertical: verticalScale(12),
+      borderRadius: moderateScale(8),
       alignItems: 'center',
       justifyContent: 'center',
+      marginHorizontal: horizontalScale(5),
     },
-    fullWidthButton: {
-      width: '100%',
-      paddingVertical: verticalScale(15),
-      borderRadius: moderateScale(10),
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: CustomColors.appThemeColor,
+    backButton: {
+      backgroundColor: CustomColors.mediumGray,
     },
-    fullWidthButtonText: {
+    submitButton: {
+      backgroundColor: CustomColors.appThemeColor,
+    },
+    bottomButtonText: {
       color: CustomColors.textWhite,
-      fontSize: moderateScale(16),
+      fontSize: moderateScale(15),
       fontWeight: 'bold',
       fontFamily: Fonts.bold,
     },
@@ -421,32 +570,6 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       color: CustomColors.textDark,
       fontFamily: Fonts.regular,
     },
-    errorContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: CustomColors.appScreenColor,
-      padding: moderateScale(20),
-    },
-    errorText: {
-      fontSize: moderateScale(16),
-      color: CustomColors.red,
-      textAlign: 'center',
-      marginBottom: verticalScale(10),
-      fontFamily: Fonts.regular,
-    },
-    retryButton: {
-      backgroundColor: CustomColors.appThemeColor,
-      paddingVertical: verticalScale(10),
-      paddingHorizontal: horizontalScale(20),
-      borderRadius: moderateScale(8),
-      marginTop: verticalScale(10),
-    },
-    retryButtonText: {
-      color: CustomColors.textWhite,
-      fontSize: moderateScale(15),
-      fontFamily: Fonts.semiBold,
-    },
     noDataText: {
       textAlign: 'center',
       marginTop: verticalScale(20),
@@ -455,15 +578,12 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       fontFamily: Fonts.regular,
     },
   });
+
   useEffect(() => {
     navigation.setOptions({
       headerShown: true,
-
       headerStyle: { backgroundColor: CustomColors.appThemeColor },
-
       headerTintColor: CustomColors.white,
-
-      // ✅ Custom header title with allowFontScaling
       headerTitle: () => (
         <Text
           allowFontScaling={false}
@@ -471,7 +591,7 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
             globalStyles.headerTitle,
             {
               fontSize: moderateScale(20),
-              fontWeight: "600",
+              fontWeight: '600',
               color: CustomColors.white,
             },
           ]}
@@ -485,39 +605,207 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
   useEffect(() => {
     if (isConveyanceSuccess && fetchedConveyanceData) {
       const fetchedList = fetchedConveyanceData?.data || [];
-      //console.log('fetchedList',fetchedList)
       dispatch(setLocalConveyanceExpenses(fetchedList));
-      fetchedList.forEach(item => {
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'subCategory', value: item.modeoftravel || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'date', value: item.fromdate || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'fromPlace', value: item.fromplace || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'toPlace', value: item.toplace || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'distance', value: String(item.distance || '') }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'billNumber', value: item.billno || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'remarks', value: item.remarks || '' }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'claimAmount', value: String(item.claimedamount || '') }));
-        dispatch(updateLocalConveyanceEditedItemField({ itemId: item.id, field: 'eligibleamount', value: item.eligibleamount || null }));
+      fetchedList.forEach((item) => {
+        const mode =
+          typeof item.modeoftravel === 'object'
+            ? item.modeoftravel?.value
+            : item.modeoftravel || '';
+
+        const sub =
+          typeof item.subcatogory === 'object'
+            ? item.subcatogory?.value
+            : item.subcatogory ||
+              (typeof item.subcategory === 'object'
+                ? item.subcategory?.value
+                : item.subcategory || '');
+
+        const cntr =
+          typeof item.center === 'object'
+            ? item.center?.value
+            : item.center || '';
+
+        const onw =
+          typeof item.onwardreturn === 'object'
+            ? String(item.onwardreturn?.value)
+            : item.onwardreturn !== null && item.onwardreturn !== undefined
+            ? String(item.onwardreturn)
+            : '1';
+
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'modeOfTravel',
+            value: mode,
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'subCategory',
+            value: sub,
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'center',
+            value: cntr,
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'date',
+            value: item.fromdate || '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'fromPlace',
+            value: item.fromplace || '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'toPlace',
+            value: item.toplace || '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'onwardReturn',
+            value: onw,
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'distance',
+            value:
+              item.distance !== null && item.distance !== undefined
+                ? String(item.distance)
+                : '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'billNumber',
+            value: item.billno || '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'remarks',
+            value: item.remarks || '',
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'claimAmount',
+            value: String(item.claimedamount || ''),
+          })
+        );
+        dispatch(
+          updateLocalConveyanceEditedItemField({
+            itemId: item.id,
+            field: 'eligibleamount',
+            value: String(item.eligibleamount ?? ''),
+          })
+        );
       });
-      const currentStatusId = Number(claimdata?.claim_status_id);
+      const currentStatusId = Number(
+        claimdata?.claim_status_id ??
+        claimdata?.status_id ??
+        expenseFromRoute?.claim_status_id ??
+        expenseFromRoute?.status_id
+      );
       setClaimStatusId(currentStatusId);
       const editableStatuses = [-1, 1, 5];
-      setIsEditable(editableStatuses.includes(currentStatusId));
+      setIsEditable(
+        !isNaN(currentStatusId) && currentStatusId !== 0
+          ? editableStatuses.includes(currentStatusId)
+          : true
+      );
     }
-  }, [fetchedConveyanceData]);
+  }, [fetchedConveyanceData, isConveyanceSuccess, dispatch, claimdata, expenseFromRoute]);
+
+  // Load every dropdown's options from the backend on mount — no hardcoding.
   useEffect(() => {
-    triggerGetModeOfTravel('mode_of_travel');
-  }, [triggerGetModeOfTravel]);
-  const subCategoryDropdownOptions = useMemo(() => {
-    if (modeOfTravelData && Array.isArray(modeOfTravelData)) {
-      return modeOfTravelData.map(item => ({
-        label: item.name,
-        value: item.value,
-      }));
-    }
-    return [];
-  }, [modeOfTravelData]);
+    const toOptions = (list) =>
+      (list || []).map((o) => ({ label: o.name, value: o.value }));
+
+    const loadDropdown = async (code, setter, label) => {
+      try {
+        const res = await triggerDropdownGet(code).unwrap();
+        setter(toOptions(res));
+      } catch (e) {
+        ToastMessage({
+          type: 'error',
+          text1: 'Error',
+          text2: `Could not load ${label} options.`,
+        });
+      }
+    };
+
+    loadDropdown('conv_travelmode', setModeOfTravelOptions, 'Mode of Travel');
+    loadDropdown('conv_train', setTrainSubCategoryOptions, 'Train Subcategory');
+    loadDropdown('conv_road', setRoadSubCategoryOptions, 'Road Subcategory');
+    loadDropdown('conv_onward', setOnwardReturnOptions, 'Onward/Return');
+    loadDropdown('conv_center', setCenterOptions, 'Center');
+  }, [triggerDropdownGet]);
+
+  // Calculate Eligible Amount API handler
+  const fetchEligibleAmount = useCallback(
+    async (itemId, selectedCenter, selectedSubCat) => {
+      try {
+        const item = editedItemData[itemId] || {};
+        const centerToUse = selectedCenter || item.center;
+        const subCatToUse = selectedSubCat || item.subCategory;
+        if (!centerToUse) return;
+
+        const res = await triggerEligibleAmountCalculation({
+          center: centerToUse,
+          subcatogory: subCatToUse,
+          subcategory: subCatToUse,
+          distance:
+            item.distance !== '' &&
+            item.distance !== null &&
+            !isNaN(parseFloat(item.distance))
+              ? parseFloat(item.distance)
+              : null,
+          expense_id: Number(expenseid) || 4,
+          expenseid: Number(expenseid) || 4,
+          expensegid: Number(expenseid) || 4,
+          tourgid: Number(tourId),
+          tour_id: Number(tourId),
+          tourid: Number(tourId),
+        }).unwrap();
+
+        if (res?.Eligible_amount !== undefined) {
+          dispatch(
+            updateLocalConveyanceEditedItemField({
+              itemId,
+              field: 'eligibleamount',
+              value: String(res.Eligible_amount),
+            })
+          );
+        }
+      } catch (error) {
+        // Silently catch or handle
+      }
+    },
+    [dispatch, expenseid, tourId, triggerEligibleAmountCalculation, editedItemData]
+  );
+
   const DropdownItem = ({ options, onPress, setPickerStatus, selected }) => {
-    const isSelected = selected === options.value;
+    const isSelected = String(selected ?? '') === String(options.value ?? '');
     return (
       <TouchableOpacity
         style={[
@@ -529,7 +817,8 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
           setPickerStatus(false);
         }}
       >
-        <Text allowFontScaling={false}
+        <Text
+          allowFontScaling={false}
           style={[
             styles.actionSheetItemText,
             isSelected && styles.actionSheetItemSelectedText,
@@ -540,95 +829,77 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
       </TouchableOpacity>
     );
   };
-  const handleInputChange = useCallback((value, itemId, field) => {
-    dispatch(updateLocalConveyanceEditedItemField({ value, itemId, field }));
-  }, [dispatch]);
-  const handleNumericInputValidate = useCallback(async (text, key, itemId) => {
-    const cleanedValue = text.replace(/[^0-9.]/g, '');
-    dispatch(updateLocalConveyanceNumericItemField({ text: cleanedValue, key, itemId }));
-    const currentItem = editedItemData[itemId] || {};
-    const mode = currentItem.subCategory;
-    if (key === 'distance') {
-      const distance = parseFloat(cleanedValue);
-      const shouldCalculate = mode && !['Cab', 'Auto'].includes(mode) && !isNaN(distance) && distance >= 0;
-      if (shouldCalculate) {
-        try {
-          const res = await triggerEligibleAmountCalculation({
-            modeoftravel: mode,
-            expensegid: expenseid,
-            distance,
-          }).unwrap();
-          if (res?.Eligible_amount !== undefined) {
-            dispatch(updateLocalConveyanceEditedItemField({
-              itemId,
-              field: 'eligibleamount',
-              value: res.Eligible_amount,
-            }));
-          }
-        } catch (error) {
-          ToastMessage({
-            type: 'error',
-            text1: 'Eligible Amount Error',
-            text2: error?.data?.description || 'Could not calculate eligible amount.',
-          });
-          if (currentItem?.eligibleamount !== null) {
-            dispatch(updateLocalConveyanceEditedItemField({
-              itemId,
-              field: 'eligibleamount',
-              value: null,
-            }));
-          }
-        }
-      } else {
-        if (currentItem?.eligibleamount !== null) {
-          dispatch(updateLocalConveyanceEditedItemField({
-            itemId,
-            field: 'eligibleamount',
-            value: null,
-          }));
-        }
-      }
-    }
-    if (key === 'claimAmount') {
-      const eligible = parseFloat(currentItem.eligibleamount || 0);
-      const claimed = parseFloat(cleanedValue || 0);
-      const remarks = currentItem.remarks;
-      if (
-        claimed > eligible &&
-        (!remarks || String(remarks).trim() === '') &&
-        mode !== 'Cab' &&
-        mode !== 'Auto'
-      ) {
-        ToastMessage('Please Enter Remarks for Limit Exceeding');
-      }
-    }
-  }, [dispatch, editedItemData, triggerEligibleAmountCalculation]);
-  const toggleExpand = useCallback((id) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    dispatch(toggleLocalConveyanceItemExpansion(id));
-  }, [dispatch]);
-  const handleDeleteItem = useCallback((itemId) => {
-    if (!isEditable) {
-      ToastMessage('This claim cannot be modified in its current status.');
-      return;
-    }
 
-    Alert.alert(
-      'Confirm Delete',
-      'Are you sure you want to delete this expense item?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            dispatch(deleteLocalConveyanceExpenseItem(itemId));
-            ToastMessage('Expense item deleted.');
+  const handleInputChange = useCallback(
+    (value, itemId, field) => {
+      dispatch(updateLocalConveyanceEditedItemField({ value, itemId, field }));
+    },
+    [dispatch]
+  );
+
+  const handleNumericInputValidate = useCallback(
+    async (text, key, itemId) => {
+      const cleanedValue = text.replace(/[^0-9.]/g, '');
+      dispatch(
+        updateLocalConveyanceNumericItemField({ text: cleanedValue, key, itemId })
+      );
+
+      const currentItem = editedItemData[itemId] || {};
+      if (key === 'claimAmount') {
+        const eligible = parseFloat(currentItem.eligibleamount || 0);
+        const claimed = parseFloat(cleanedValue || 0);
+        const remarks = currentItem.remarks;
+        if (
+          claimed > eligible &&
+          (!remarks || String(remarks).trim() === '')
+        ) {
+          ToastMessage('Please Enter Remarks for Limit Exceeding');
+        }
+      }
+    },
+    [dispatch, editedItemData]
+  );
+
+  const toggleExpand = useCallback(
+    (id) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      dispatch(toggleLocalConveyanceItemExpansion(id));
+    },
+    [dispatch]
+  );
+
+  const handleDeleteItem = useCallback(
+    (itemId) => {
+      if (!isEditable) {
+        ToastMessage('This claim cannot be modified in its current status.');
+        return;
+      }
+
+      Alert.alert(
+        'Confirm Delete',
+        'Are you sure you want to delete this expense item?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              if (itemId && !String(itemId).startsWith('temp-')) {
+                try {
+                  await deleteLocalConv(itemId).unwrap();
+                } catch (e) {
+                  // ignored or handled
+                }
+              }
+              dispatch(deleteLocalConveyanceExpenseItem(itemId));
+              ToastMessage('Expense item deleted.');
+            },
           },
-        },
-      ]
-    );
-  }, [isEditable, dispatch]);
+        ]
+      );
+    },
+    [isEditable, dispatch, deleteLocalConv]
+  );
 
   const handleAddExpenseItem = useCallback(() => {
     if (!isEditable) {
@@ -638,97 +909,141 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
     dispatch(addLocalConveyanceExpenseItem());
     ToastMessage('New expense item added. Please fill details.');
   }, [isEditable, dispatch]);
-  const formatDateToYYYYMMDD = (dateObj) => {
-    if (!dateObj) return '';
-    const year = dateObj.getFullYear();
-    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-    const day = String(dateObj.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  const getCleanItemForCompare = (sourceItem) => ({
-    subCategory: sourceItem.subCategory || sourceItem.modeoftravel || '',
-    date: sourceItem.date || sourceItem.fromdate || '',
-    fromPlace: sourceItem.fromPlace || sourceItem.fromplace || '',
-    toPlace: sourceItem.toPlace || sourceItem.toplace || '',
-    distance: String(sourceItem.distance || ''),
-    billNumber: sourceItem.billNumber || sourceItem.billno || '',
-    remarks: sourceItem.remarks || '',
-    claimAmount: String(sourceItem.claimAmount || sourceItem.claimedamount || ''),
-  });
+
+  const allLocalConveyanceItems = useMemo(() => {
+    return expenses
+      .filter((item) => !deletedItemIds.includes(item.id))
+      .map((item) => ({
+        ...item,
+        ...(editedItemData[item.id] || {}),
+        id: item.id,
+        distance: String(
+          editedItemData[item.id]?.distance || item.distance || ''
+        ),
+        claimAmount: String(
+          editedItemData[item.id]?.claimAmount || item.claimAmount || ''
+        ),
+        eligibleamount: String(
+          editedItemData[item.id]?.eligibleamount ?? item.eligibleamount ?? ''
+        ),
+      }));
+  }, [expenses, editedItemData, deletedItemIds]);
+
   const handleSubmit = useCallback(async () => {
     if (!hasUnsavedChanges || !isEditable || isCreatingConveyance) {
       if (!isEditable) {
-        ToastMessage("This claim cannot be submitted in its current status.");
+        ToastMessage('This claim cannot be submitted in its current status.');
       } else if (!hasUnsavedChanges) {
-        ToastMessage("There are no unsaved changes to submit.");
+        ToastMessage('There are no unsaved changes to submit.');
       } else if (isCreatingConveyance) {
-        ToastMessage("Submission in progress...");
+        ToastMessage('Submission in progress...');
       }
       return;
     }
 
     const itemsToSubmit = allLocalConveyanceItems.filter(
-      item => !deletedItemIds.includes(item.id)
+      (item) => !deletedItemIds.includes(item.id)
     );
 
-
-
     if (itemsToSubmit.length === 0) {
-      ToastMessage("There are no unsaved changes to submit.");
+      ToastMessage('There are no unsaved changes to submit.');
       return;
     }
 
     const mandatoryFields = [
-      'subCategory', 'date', 'fromPlace',
-      'toPlace', 'distance', 'claimAmount'
+      { key: 'modeOfTravel', label: 'Mode of Travel' },
+      { key: 'subCategory', label: 'Subcategory' },
+      { key: 'center', label: 'Center' },
+      { key: 'fromPlace', label: 'From Place' },
+      { key: 'toPlace', label: 'To Place' },
+      { key: 'onwardReturn', label: 'Onward/Return' },
+      { key: 'claimAmount', label: 'Claim Amount' },
+      { key: 'remarks', label: 'Remarks' },
     ];
-    const allValidationErrors = [];
 
-    for (const item of itemsToSubmit) {
-      const itemErrors = [];
+    for (let i = 0; i < itemsToSubmit.length; i++) {
+      const item = itemsToSubmit[i];
+      const sNo = i + 1;
 
-      mandatoryFields.forEach(field => {
-        if (!item[field] || String(item[field]).trim() === '') {
-          itemErrors.push(`"${field}" is mandatory.`);
+      for (const field of mandatoryFields) {
+        const val = item[field.key];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          ToastMessage(`Item #${sNo}: Please select or enter ${field.label}.`);
+          return;
         }
-      });
+      }
 
-      ['distance', 'claimAmount'].forEach(field => {
-        if (item[field] && isNaN(parseFloat(item[field]))) {
-          itemErrors.push(`"${field}" must be a valid number.`);
-        }
-      });
-
-      if (itemErrors.length > 0) {
-        allValidationErrors.push(
-          `Item (Date: ${item.date || 'N/A'}): ${itemErrors.join(', ')}`
-        );
+      const claimVal = parseFloat(item.claimAmount || 0);
+      if (isNaN(claimVal) || claimVal <= 0) {
+        ToastMessage(`Item #${sNo}: Please enter a valid Claim Amount.`);
+        return;
       }
     }
 
-    if (allValidationErrors.length > 0) {
-      ToastMessage("Please fill in all mandatory fields before proceeding.");
-      return;
-    }
+    const payloadData = itemsToSubmit.map((item) => {
+      const modeVal =
+        typeof item.modeOfTravel === 'object'
+          ? item.modeOfTravel?.value
+          : item.modeOfTravel || '';
 
-    const payloadData = itemsToSubmit.map(item => {
+      const subCatVal =
+        typeof item.subCategory === 'object'
+          ? item.subCategory?.value
+          : item.subCategory ||
+            (typeof item.subcatogory === 'object'
+              ? item.subcatogory?.value
+              : item.subcatogory || '');
+
+      const centerVal =
+        typeof item.center === 'object'
+          ? item.center?.value
+          : item.center || '';
+
+      const onwardVal =
+        item.onwardReturn !== undefined &&
+        item.onwardReturn !== null &&
+        item.onwardReturn !== ''
+          ? Number(item.onwardReturn)
+          : typeof item.onwardreturn === 'object'
+          ? Number(item.onwardreturn?.value ?? 1)
+          : Number(item.onwardreturn ?? 1);
+
+      const claimVal = parseFloat(item.claimAmount || item.claimedamount || 0);
+      const eligVal = parseFloat(item.eligibleamount || 0);
+      const distVal =
+        item.distance !== '' &&
+        item.distance !== null &&
+        item.distance !== undefined &&
+        !isNaN(parseFloat(item.distance))
+          ? parseFloat(item.distance)
+          : null;
+
       const baseItem = {
-        tour_id: tourId,
-        expensegid: expenseid,
-        eligibleamount: item.eligibleamount ?? null,
-        claimedamount: parseFloat(item.claimAmount || 0),
-        requestercomment: requestercomment || '',
-        modeoftravel: item.subCategory || '',
-        billno: item.billNumber || '',
+        tourgid: Number(tourId),
+        tour_id: Number(tourId),
+        tourid: Number(tourId),
+        expense_id: Number(expenseid) || 4,
+        expensegid: Number(expenseid) || 4,
+        expenseid: Number(expenseid) || 4,
+        center: centerVal,
+        modeoftravel: modeVal,
+        subcatogory: subCatVal, // REQUIRED: Backend expects subcatogory
+        subcategory: subCatVal, // BACKWARD COMPATIBILITY
+        fromplace: item.fromPlace || item.fromplace || '',
+        toplace: item.toPlace || item.toplace || '',
+        onwardreturn: isNaN(onwardVal) ? 1 : onwardVal, // 1: Onward, 0: Return
+        distance: distVal,
+        claimedamount: claimVal,
+        eligibleamount: eligVal,
         remarks: item.remarks || '',
-        fromplace: item.fromPlace || '',
-        toplace: item.toPlace || '',
-        fromdate: formatDateToYYYYMMDD(parseDDMMYYYYToDate(item.date)),
-        distance: String(parseFloat(item.distance || 0)),
+        requestercomment: requestercomment || '',
+        gstno: item.gstno || '',
+        invoicedate: item.invoicedate || null,
+        invoiceno: item.invoiceno || null,
+        total_eligibleamt: eligVal,
       };
 
-      // Include ID only for existing items
-      if (!item.id.toString().startsWith('temp-')) {
+      if (item.id && !String(item.id).startsWith('temp-')) {
         baseItem.id = item.id;
       }
 
@@ -736,299 +1051,481 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
     });
 
     try {
-      await localConvCreate({ data: payloadData }).unwrap();
-      ToastMessage('Local Conveyance submitted successfully!');
-      dispatch(setLocalConveyanceHasUnsavedChanges(false));
-      dispatch(resetLocalConveyanceState());
-      refetchConveyanceData();
-      navigation.goBack();
+      const res = await localConvCreate({ data: payloadData }).unwrap();
+      if (
+        res?.message === 'Successfully Created' ||
+        res?.message === 'Successfully Updated' ||
+        res?.status === 'success' ||
+        (res?.message && String(res?.message).toLowerCase().includes('success'))
+      ) {
+        ToastMessage('Local Conveyance submitted successfully!');
+        dispatch(setLocalConveyanceHasUnsavedChanges(false));
+        dispatch(resetLocalConveyanceState());
+        refetchConveyanceData();
+        navigation.goBack();
+      } else {
+        const errorDesc =
+          res?.description || res?.message || 'An error occurred during submission.';
+        ToastMessage(String(errorDesc), 'error');
+      }
     } catch (err) {
       ToastMessage(
-        err?.data?.message || err?.message || "An error occurred during submission. Please try again.",
-        "error"
+        err?.data?.description ||
+          err?.data?.message ||
+          err?.message ||
+          'An error occurred during submission. Please try again.',
+        'error'
       );
     }
   }, [
     hasUnsavedChanges,
     isEditable,
     isCreatingConveyance,
-    editedItemData,
-    expenses,
     allLocalConveyanceItems,
+    deletedItemIds,
     tourId,
     expenseid,
     requestercomment,
     dispatch,
     refetchConveyanceData,
-    localConvCreate
+    localConvCreate,
+    navigation,
   ]);
 
-  const handleModeOfTravelChange = useCallback(async (newValue, itemId) => {
-    const currentItem = editedItemData[itemId] || {};
-    dispatch(updateLocalConveyanceEditedItemField({
-      itemId,
-      field: 'subCategory',
-      value: newValue
-    }));
-    const distanceStr = currentItem?.distance ?? '';
-    const distance = parseFloat(distanceStr);
-    const shouldCalculate = newValue && !['Cab', 'Auto'].includes(newValue) && !isNaN(distance) && distance >= 0;
-    if (shouldCalculate) {
-      try {
-        const res = await triggerEligibleAmountCalculation({
-          modeoftravel: newValue,
-          expensegid: 4,
-          distance,
-        }).unwrap();
-        if (res?.Eligible_amount !== undefined) {
-          dispatch(updateLocalConveyanceEditedItemField({
-            itemId,
-            field: 'eligibleamount',
-            value: res.Eligible_amount,
-          }));
-        }
-      } catch (error) {
-        ToastMessage({
-          type: 'error',
-          text1: 'Eligible Amount Error',
-          text2: error?.data?.description || 'Could not calculate eligible amount.',
-        });
-        if (currentItem?.eligibleamount !== null) {
-          dispatch(updateLocalConveyanceEditedItemField({
-            itemId,
-            field: 'eligibleamount',
-            value: null,
-          }));
-        }
-      }
-    } else {
-      if (currentItem?.eligibleamount !== null) {
-        dispatch(updateLocalConveyanceEditedItemField({
-          itemId,
-          field: 'eligibleamount',
-          value: null,
-        }));
-      }
-      if (!['Cab', 'Auto'].includes(newValue) && (isNaN(distance) || distance < 0)) {
-        ToastMessage({
-          type: 'info',
-          text1: 'Distance Missing/Invalid',
-          text2: 'Enter a valid distance to calculate eligible amount.',
-        });
-      }
-    }
-  }, [dispatch, editedItemData, triggerEligibleAmountCalculation]);
-  const allLocalConveyanceItems = useMemo(() => {
-    return expenses
-      .filter(item => !deletedItemIds.includes(item.id)) // ← remove deleted
-      .map(item => ({
-        ...item,
-        ...(editedItemData[item.id] || {}),
-        id: item.id,
-        distance: String(editedItemData[item.id]?.distance || item.distance || ''),
-        claimAmount: String(editedItemData[item.id]?.claimAmount || item.claimAmount || ''),
-      }));
-  }, [expenses, editedItemData, deletedItemIds]);
-  //console.log('allLocalConveyanceItems',allLocalConveyanceItems)
-  const renderLocalConveyanceItem = useCallback(({ item }) => {
-    const isExpanded = expandedItems[item.id];
-    const currentItemData = editedItemData[item.id] || item;
-    const isTempItem = item.id?.toString().startsWith('temp-');
-    const isItemEditable = isEditable || isTempItem;
-    const handleDatePickerPress = () => {
-      if (!isItemEditable) return;
-      dispatch(setLocalConveyanceActiveDateField('date'));
-      dispatch(setLocalConveyanceActivePickerItemId(item.id));
-      const initialDate = parseDDMMYYYYToDate(currentItemData.date);
-      const tourStartDateString = claimdata?.startdate;
-      const tourEndDateString = claimdata?.enddate;
-      //console.log(tourStartDateString,tourEndDateString)
-      const minLimitDate = tourStartDateString ? parseDDMMYYYYToDate(tourStartDateString) : new Date(1900, 0, 1);
-      const maxLimitDate = tourEndDateString ? parseDDMMYYYYToDate(tourEndDateString) : new Date(2100, 11, 31);
-      //console.log(minLimitDate,maxLimitDate)
-      if (Platform.OS === 'android') {
-        DateTimePickerAndroid.open({
-          value: initialDate,
-          onChange: (event, selectedDate) => {
-            if (event.type === 'dismissed') {
-              return;
-            }
-            if (selectedDate) {
-              dispatch(updateLocalConveyanceEditedItemField({
-                value: formatDateToDDMMYYYY(selectedDate),
-                itemId: item.id,
-                field: 'date'
-              }));
-            }
-          },
-          mode: 'date',
-          display: 'default',
-          minimumDate: minLimitDate,
-          maximumDate: maxLimitDate,
-        });
-      } else {
-        dispatch(setLocalConveyanceDatePickerValue(initialDate.toISOString()));
-        dispatch(setLocalConveyanceShowDatePicker(true));
-      }
-    };
-    return (
-      <View key={item.id} style={styles.itemCard}>
-        <TouchableOpacity
-          onPress={() => toggleExpand(item.id)}
-          onLongPress={() => isItemEditable && handleDeleteItem(item.id)}
-          style={styles.cardHeader}
-          activeOpacity={0.7}
-        >
-          <Text allowFontScaling={false} style={styles.cardTitle}>
-            {currentItemData.subCategory || 'New Item'} ({currentItemData.date || 'Date'})
-          </Text>
-          <MaterialIcons
-            name={isExpanded ? "expand-less" : "expand-more"}
-            size={moderateScale(28)}
-            color={CustomColors.appThemeColor}
-          />
-        </TouchableOpacity>
-        {isExpanded && (
-          <View style={styles.cardDetails}>
-            <EditableRow
-              label="Sub Category"
-              value={currentItemData.subCategory}
-              isPicker={true}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onPressPicker={() => {
-                dispatch(setLocalConveyanceActivePickerItemId(item.id));
-                dispatch(setLocalConveyanceShowSubCategoryPicker(true));
-              }}
-              placeholder="Select Sub Category"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Date"
-              value={currentItemData.date}
-              isDatePicker={true}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onPressDatePicker={handleDatePickerPress}
-              placeholder="DD-MMM-YYYY"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="From Place"
-              value={currentItemData.fromPlace}
-              onChangeText={text => handleInputChange(text, item.id, 'fromPlace')}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="To Place"
-              value={currentItemData.toPlace}
-              onChangeText={text => handleInputChange(text, item.id, 'toPlace')}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Distance (KM)"
-              value={currentItemData.distance}
-              onChangeText={text => handleNumericInputValidate(text, 'distance', item.id)}
-              isEditing={isItemEditable}
-              keyboardType="numeric"
-              isDisabled={!isItemEditable}
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Bill Number"
-              value={currentItemData.billNumber}
-              onChangeText={text => handleInputChange(text, item.id, 'billNumber')}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Remarks"
-              value={currentItemData.remarks}
-              onChangeText={text => handleInputChange(text, item.id, 'remarks')}
-              isEditing={isItemEditable}
-              multiline={true}
-              isDisabled={!isItemEditable}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-            <EditableRow
-              label="Claim Amount (INR)"
-              value={currentItemData.claimAmount}
-              isEditing={isItemEditable}
-              isDisabled={!isItemEditable}
-              onChangeText={text => handleNumericInputValidate(text, 'claimAmount', item.id)}
-              keyboardType="numeric"
-              isRequired={true}
-              placeholderTextColor={CustomColors.textGray}
-              CustomColors={CustomColors}
-              styles={styles}
-            />
-          </View>
-        )}
-      </View>
-    );
-  }, [editedItemData, expandedItems, isEditable, toggleExpand, handleDeleteItem, handleInputChange, handleNumericInputValidate, dispatch, claimdata]);
-  const ListHeader = useCallback(() => (
-    <>
-      <View style={styles.sectionCard}>
-        <Text allowFontScaling={false} style={styles.sectionTitle}>Travel Overview</Text>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Travel No:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{travelNo || 'N/A'}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Employee Code:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{employeeCode || 'N/A'}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text allowFontScaling={false} style={styles.boldText}>Employee Name:</Text>
-          <Text allowFontScaling={false} style={styles.detailValueText}>{employeeName || 'N/A'}</Text>
-        </View>
-      </View>
-      <View style={styles.dailyItemsHeader}>
-        <Text allowFontScaling={false} style={styles.mainHeading}>Local Conveyance Items</Text>
-        {isEditable && (
-          <TouchableOpacity onPress={handleAddExpenseItem} style={styles.plusicon}>
-            <MaterialIcons name="add-circle" size={moderateScale(32)} color={CustomColors.appThemeColor} />
+  const renderLocalConveyanceItem = useCallback(
+    ({ item, index }) => {
+      const isExpanded = expandedItems[item.id];
+      const currentItemData = editedItemData[item.id] || item;
+      const isTempItem = item.id?.toString().startsWith('temp-');
+      const isItemEditable = isEditable || isTempItem;
+
+      const isCenterEnabled =
+        isItemEditable &&
+        Boolean(currentItemData.modeOfTravel) &&
+        Boolean(currentItemData.subCategory);
+      return (
+        <View key={item.id} style={styles.itemCard}>
+          <TouchableOpacity
+            onPress={() => toggleExpand(item.id)}
+            style={styles.cardHeader}
+            activeOpacity={0.7}
+          >
+            <View style={styles.cardHeaderLeft}>
+              <View style={styles.sNoBadge}>
+                <Text allowFontScaling={false} style={styles.sNoText}>
+                  S.No {index + 1}
+                </Text>
+              </View>
+              <Text allowFontScaling={false} style={styles.cardTitle}>
+                {currentItemData.subCategory || 'New Item'}
+              </Text>
+            </View>
+
+            <View style={styles.cardHeaderActions}>
+              {isItemEditable && (
+                <TouchableOpacity
+                  onPress={() => handleDeleteItem(item.id)}
+                  style={styles.deleteIconBtn}
+                >
+                  <MaterialIcons
+                    name="delete"
+                    size={moderateScale(24)}
+                    color={CustomColors.dangerRed || 'red'}
+                  />
+                </TouchableOpacity>
+              )}
+              <MaterialIcons
+                name={isExpanded ? 'expand-less' : 'expand-more'}
+                size={moderateScale(28)}
+                color={CustomColors.appThemeColor}
+              />
+            </View>
           </TouchableOpacity>
+
+          {isExpanded && (
+            <View style={styles.cardDetails}>
+              {/* Mode of Travel* */}
+              <EditableRow
+                label="Mode of Travel"
+                value={currentItemData.modeOfTravel}
+                isPicker={true}
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                onPressPicker={() => {
+                  dispatch(setLocalConveyanceActivePickerItemId(item.id));
+                  setActivePickerField('modeOfTravel');
+                  setPickerModalVisible(true);
+                }}
+                placeholder="Select Mode of Travel"
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Subcategory* */}
+              <EditableRow
+                label="Subcategory"
+                value={currentItemData.subCategory}
+                isPicker={true}
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                onPressPicker={() => {
+                  dispatch(setLocalConveyanceActivePickerItemId(item.id));
+                  setActivePickerField('subCategory');
+                  setPickerModalVisible(true);
+                }}
+                placeholder="Select Subcategory"
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Center */}
+              <EditableRow
+                label="Center"
+                value={currentItemData.center}
+                placeholder="Select Center"
+                isPicker={true}
+                isDisabled={!isCenterEnabled}
+                isEditing={isItemEditable}
+                onPressPicker={() => {
+                  if (!isCenterEnabled) return;
+                  dispatch(setLocalConveyanceActivePickerItemId(item.id));
+                  setActivePickerField('center');
+                  setPickerModalVisible(true);
+                }}
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+
+              {/* From Place */}
+              <EditableRow
+                label="From Place"
+                value={currentItemData.fromPlace}
+                onChangeText={(text) =>
+                  handleInputChange(text, item.id, 'fromPlace')
+                }
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* To Place* */}
+              <EditableRow
+                label="To Place"
+                value={currentItemData.toPlace}
+                onChangeText={(text) =>
+                  handleInputChange(text, item.id, 'toPlace')
+                }
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Onward/Return */}
+              <EditableRow
+                label="Onward/Return"
+                value={
+                  onwardReturnOptions.find(
+                    (o) => String(o.value) === String(currentItemData.onwardReturn)
+                  )?.label ||
+                  (String(currentItemData.onwardReturn) === '0'
+                    ? 'Return'
+                    : String(currentItemData.onwardReturn) === '1'
+                    ? 'Onward'
+                    : '')
+                }
+                isPicker={true}
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                isRequired={true}
+                onPressPicker={() => {
+                  dispatch(setLocalConveyanceActivePickerItemId(item.id));
+                  setActivePickerField('onwardReturn');
+                  setPickerModalVisible(true);
+                }}
+                placeholder="Select Onward/Return"
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Distance (KM) */}
+              <EditableRow
+                label="Distance (KM)"
+                value={currentItemData.distance}
+                onChangeText={(text) =>
+                  handleNumericInputValidate(text, 'distance', item.id)
+                }
+                isEditing={isItemEditable}
+                keyboardType="numeric"
+                isDisabled={!isItemEditable}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Eligible Amount Input Field */}
+              <EditableRow
+                label="Eligible Amount"
+                value={currentItemData.eligibleamount}
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                onChangeText={(text) =>
+                  handleNumericInputValidate(text, 'eligibleamount', item.id)
+                }
+                keyboardType="numeric"
+                placeholder="Enter Eligible Amount"
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Claim Amount* */}
+              <EditableRow
+                label="Claim Amount (INR)"
+                value={currentItemData.claimAmount}
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                onChangeText={(text) =>
+                  handleNumericInputValidate(text, 'claimAmount', item.id)
+                }
+                keyboardType="numeric"
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+
+              {/* Bill Number */}
+              {/* <EditableRow
+                label="Bill Number"
+                value={currentItemData.billNumber}
+                onChangeText={(text) =>
+                  handleInputChange(text, item.id, 'billNumber')
+                }
+                isEditing={isItemEditable}
+                isDisabled={!isItemEditable}
+                CustomColors={CustomColors}
+                styles={styles}
+              /> */}
+
+              {/* Remarks* */}
+              <EditableRow
+                label="Remarks"
+                value={currentItemData.remarks}
+                onChangeText={(text) =>
+                  handleInputChange(text, item.id, 'remarks')
+                }
+                isEditing={isItemEditable}
+                multiline={true}
+                isDisabled={!isItemEditable}
+                isRequired={true}
+                CustomColors={CustomColors}
+                styles={styles}
+              />
+            </View>
+          )}
+        </View>
+      );
+    },
+    [
+      editedItemData,
+      expandedItems,
+      isEditable,
+      toggleExpand,
+      handleDeleteItem,
+      handleInputChange,
+      handleNumericInputValidate,
+      dispatch,
+      claimdata,
+      styles,
+      CustomColors,
+      onwardReturnOptions,
+    ]
+  );
+
+  const ListHeader = useCallback(
+    () => (
+      <>
+        <View style={styles.sectionCard}>
+          <Text allowFontScaling={false} style={styles.sectionTitle}>
+            Tour Details
+          </Text>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>
+              Tour No:
+            </Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>
+              {travelNo || 'N/A'}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>
+              Employee Code:
+            </Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>
+              {employeeCode || 'N/A'}
+            </Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>
+              Employee Name:
+            </Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>
+              {employeeName || 'N/A'}
+            </Text>
+          </View>
+          {employeeDesignation ? (
+            <View style={styles.detailRow}>
+              <Text allowFontScaling={false} style={styles.boldText}>
+                Designation:
+              </Text>
+              <Text allowFontScaling={false} style={styles.detailValueText}>
+                {employeeDesignation}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.detailRow}>
+            <Text allowFontScaling={false} style={styles.boldText}>
+              Employee Grade:
+            </Text>
+            <Text allowFontScaling={false} style={styles.detailValueText}>
+              {employeeGrade || 'N/A'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.dailyItemsHeader}>
+          <Text allowFontScaling={false} style={styles.mainHeading}>
+            Local Conveyance Items
+          </Text>
+          {isEditable && (
+            <TouchableOpacity
+              onPress={handleAddExpenseItem}
+              style={styles.plusicon}
+            >
+              <MaterialIcons
+                name="add-circle"
+                size={moderateScale(32)}
+                color={CustomColors.appThemeColor}
+              />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {allLocalConveyanceItems.length === 0 && !isFetchingConveyance && (
+          <Text allowFontScaling={false} style={styles.noDataText}>
+            No local conveyance items found.
+          </Text>
         )}
-      </View>
-      {allLocalConveyanceItems.length === 0 && !isFetchingConveyance && (
-        <Text allowFontScaling={false} style={styles.noDataText}>No local conveyance items found.</Text>
-      )}
-    </>
-  ), [travelNo, employeeCode, employeeName, claimStatusId, allLocalConveyanceItems.length, isEditable, handleAddExpenseItem, isFetchingConveyance]);
-  const ListFooter = useCallback(() => (
-    <View style={{ height: verticalScale(100) }} />
-  ), []);
+      </>
+    ),
+    [
+      travelNo,
+      employeeCode,
+      employeeName,
+      employeeDesignation,
+      employeeGrade,
+      allLocalConveyanceItems.length,
+      isEditable,
+      handleAddExpenseItem,
+      isFetchingConveyance,
+      styles,
+      CustomColors,
+    ]
+  );
+
+  const ListFooter = useCallback(
+    () => <View style={{ height: verticalScale(100) }} />,
+    []
+  );
+
+  // Dynamic Options for ActionSheet
+  const currentActiveItem = activePickerItemId
+    ? editedItemData[activePickerItemId] || {}
+    : {};
+  const currentMode = currentActiveItem.modeOfTravel || '';
+
+  let currentPickerOptions = [];
+  if (activePickerField === 'modeOfTravel') {
+    currentPickerOptions = modeOfTravelOptions;
+  } else if (activePickerField === 'subCategory') {
+    currentPickerOptions =
+      subCategoryMap[currentMode] || subCategoryMap['Road'];
+  } else if (activePickerField === 'center') {
+    currentPickerOptions = centerOptions;
+  } else if (activePickerField === 'onwardReturn') {
+    currentPickerOptions = onwardReturnOptions;
+  }
+
+  const handlePickerSelect = (val) => {
+    if (!activePickerItemId) return;
+
+    if (activePickerField === 'modeOfTravel') {
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'modeOfTravel',
+          value: val,
+        })
+      );
+      const defaultSub = subCategoryMap[val]?.[0]?.value || val;
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'subCategory',
+          value: defaultSub,
+        })
+      );
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'center',
+          value: '',
+        })
+      );
+    } else if (activePickerField === 'subCategory') {
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'subCategory',
+          value: val,
+        })
+      );
+      const item = editedItemData[activePickerItemId] || {};
+      if (item.center) {
+        fetchEligibleAmount(activePickerItemId, item.center, val);
+      }
+    } else if (activePickerField === 'center') {
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'center',
+          value: val,
+        })
+      );
+      fetchEligibleAmount(activePickerItemId, val);
+    } else if (activePickerField === 'onwardReturn') {
+      dispatch(
+        updateLocalConveyanceEditedItemField({
+          itemId: activePickerItemId,
+          field: 'onwardReturn',
+          value: String(val),
+        })
+      );
+    }
+  };
+
   if (isFetchingConveyance) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={CustomColors.appThemeColor} />
-        <Text allowFontScaling={false} style={styles.loadingText}>Please Wait...</Text>
+        <Text allowFontScaling={false} style={styles.loadingText}>
+          Please Wait...
+        </Text>
       </View>
     );
   }
@@ -1036,76 +1533,72 @@ const LocalConveyanceExpenseScreen = ({ route }) => {
   return (
     <KeyboardAvoidingView
       style={styles.keyboardAvoidingContainer}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <FlatList
         data={allLocalConveyanceItems}
-        keyExtractor={item => item.id?.toString()}
+        keyExtractor={(item) => item.id?.toString()}
         renderItem={renderLocalConveyanceItem}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         contentContainerStyle={styles.flatListOverallContent}
         keyboardShouldPersistTaps="handled"
       />
+
+      {/* Bottom Action Bar */}
       <View style={styles.bottomActionBar}>
+        <TouchableOpacity
+          style={[styles.bottomButton, styles.backButton]}
+          onPress={() => navigation.goBack()}
+        >
+          <Text allowFontScaling={false} style={styles.bottomButtonText}>
+            Back
+          </Text>
+        </TouchableOpacity>
+
         {from !== 'Checker' && (
           <TouchableOpacity
-            style={[styles.fullWidthButton, {
-              backgroundColor: hasUnsavedChanges && !isCreatingConveyance && isEditable
-                ? CustomColors.appThemeColor
-                : CustomColors.mediumGray,
-            }]}
+            style={[
+              styles.bottomButton,
+              styles.submitButton,
+              {
+                backgroundColor:
+                  hasUnsavedChanges && !isCreatingConveyance && isEditable
+                    ? CustomColors.appThemeColor
+                    : CustomColors.mediumGray,
+              },
+            ]}
             onPress={handleSubmit}
             disabled={!hasUnsavedChanges || isCreatingConveyance || !isEditable}
           >
-            <Text allowFontScaling={false} style={styles.fullWidthButtonText}>
+            <Text allowFontScaling={false} style={styles.bottomButtonText}>
               {isCreatingConveyance ? 'Submitting...' : 'Submit'}
             </Text>
           </TouchableOpacity>
         )}
       </View>
-      {Platform.OS === 'ios' && showDatePicker && (
-        <DateTimePicker
-          value={new Date(datePickerValue)}
-          mode="date"
-          display="spinner"
-          onChange={(event, selectedDate) => {
-            if (event.type === 'dismissed') {
-              dispatch(setLocalConveyanceShowDatePicker(false));
-              return;
-            }
-            dispatch(setLocalConveyanceShowDatePicker(false));
-            const selected = selectedDate || parseDDMMYYYYToDate(datePickerValue);
-            dispatch(updateLocalConveyanceEditedItemField({
-              value: formatDateToDDMMYYYY(selected),
-              itemId: activePickerItemId,
-              field: 'date'
-            }));
-          }}
-          minimumDate={
-            claimdata?.tour_startdate
-              ? parseDDMMYYYYToDate(claimdata.tour_startdate)
-              : new Date(1900, 0, 1)
-          }
-          maximumDate={
-            claimdata?.tour_enddate
-              ? parseDDMMYYYYToDate(claimdata.tour_enddate)
-              : new Date(2100, 11, 31)
-          }
-        />
-      )}
+
+
+      {/* Dynamic Action Sheet Picker */}
       {activePickerItemId && (
         <CustomActionSheetPicker
-          pickerStatus={showSubCategoryPicker}
-          setPickerStatus={(status) => dispatch(setLocalConveyanceShowSubCategoryPicker(status))}
-          title="Select Sub Category"
-          optionsData={subCategoryDropdownOptions}
+          pickerStatus={pickerModalVisible}
+          setPickerStatus={(status) => setPickerModalVisible(status)}
+          title={`Select ${activePickerField === 'modeOfTravel'
+            ? 'Mode of Travel'
+            : activePickerField === 'subCategory'
+              ? 'Subcategory'
+              : activePickerField === 'center'
+                ? 'Center'
+                : 'Onward/Return'
+            }`}
+          optionsData={currentPickerOptions}
           RenderItem={DropdownItem}
           onPress={(value) => {
-            handleModeOfTravelChange(value, activePickerItemId);
-            dispatch(setLocalConveyanceShowSubCategoryPicker(false));
+            handlePickerSelect(value);
+            setPickerModalVisible(false);
           }}
-          selected={editedItemData[activePickerItemId]?.subCategory}
+          selected={currentActiveItem[activePickerField]}
         />
       )}
     </KeyboardAvoidingView>

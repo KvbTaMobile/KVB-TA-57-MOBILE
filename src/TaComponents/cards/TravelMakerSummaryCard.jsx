@@ -84,10 +84,17 @@ const TravelMakerSummaryCard = ({ data, onPress, isAdvance }) => {
     data?.from === "ADVANCE_MAKER" ||
     (data?.advance_status !== undefined && data?.advance_status !== "DEFAULT");
 
+  const hasAdvanceStatus =
+    (data?.advance_status !== undefined && data?.advance_status !== null && data?.advance_status !== "DEFAULT") ||
+    data?.advance_status_id !== undefined;
+
   // 🔑 Call Separate Functions
-  const displayStatusText = isAdvanceType
-    ? getAdvanceStatusText(data?.advance_status_id ?? data?.status, data?.advance_status || data?.status_name)
-    : getTourStatusText(data?.tour_status_id ?? data?.status, data?.tour_status || data?.status_name);
+  const displayStatusText =
+    data?.tour_cancel_status ||
+    data?.advance_cancel_status ||
+    (hasAdvanceStatus || (isAdvanceType && !data?.tour_status && !data?.tour_status_id)
+      ? getAdvanceStatusText(data?.advance_status_id ?? data?.status, data?.advance_status || data?.status_name)
+      : getTourStatusText(data?.tour_status_id ?? data?.status, data?.tour_status || data?.status_name));
 
   // Color Mapping
   const getStatusColor = () => {
@@ -122,17 +129,51 @@ const TravelMakerSummaryCard = ({ data, onPress, isAdvance }) => {
     </View>
   );
 
-  const displayApproverName = data.approver_data?.name
-    ? `(${data.approver_data?.code || ""}) ${data.approver_data?.name}`
-    : data.approvedby
-    ? `(${data.approver_code || ""}) ${data.approvedby}`
+  const approverName =
+    data.approver_data?.name ||
+    data.approver_data?.full_name ||
+    data.approvedby ||
+    data.approved_by ||
+    data.approvername ||
+    data.approver_name;
+  const approverCode =
+    data.approver_data?.code ||
+    data.approver_code ||
+    data.approvercode;
+  const displayApproverName = approverName
+    ? approverCode
+      ? `(${approverCode}) ${approverName}`
+      : approverName
     : null;
 
-  const displayBranchName = data.branch_name
-    ? `(${data.branch_code || ""}) ${data.branch_name}`
+  const branchName =
+    data.branch_name ||
+    data.branch ||
+    data.branchname ||
+    data.approver_branch_data?.branch_name ||
+    data.approver_branch_data?.name;
+  const branchCode =
+    data.branch_code ||
+    data.branchcode ||
+    data.approver_branch_data?.branch_code ||
+    data.approver_branch_data?.code;
+  const displayBranchName = branchName
+    ? branchCode
+      ? `(${branchCode}) ${branchName}`
+      : branchName
     : null;
 
-  const tourNumberDisplay = data.requestno || data.id || "NEW";
+  const tourNumberDisplay =
+    data.tour_no ||
+    data.tourno ||
+    data.requestno ||
+    data.request_no ||
+    data.reqno ||
+    data.tourgid ||
+    data.tour_id ||
+    data.tourid ||
+    data.id ||
+    "NEW";
 
   const copyTourNoToClipboard = async (tourNo) => {
     if (tourNo) {
@@ -280,119 +321,199 @@ const TravelMakerSummaryCard = ({ data, onPress, isAdvance }) => {
 
       {/* Table Details */}
       <View style={styles.detailsSection}>
-        {data.employee_name || data.full_name ? (
-          <DetailRow
-            label="Employee"
-            value={`${data.employee_name || data.full_name} (${data.employee_code || "-"})`}
-            icon={
-              <MaterialIcons
-                name="person"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+        {(() => {
+          const empName =
+            data.employee_name ||
+            data.full_name ||
+            data.emp_name ||
+            data.empname ||
+            data.name;
+          const empCode =
+            data.employee_code ||
+            data.emp_code ||
+            data.empcode ||
+            data.code;
+          const displayEmployee = empName
+            ? empCode
+              ? `${empName} (${empCode})`
+              : empName
+            : null;
 
-        {data.requestdate ? (
-          <DetailRow
-            label="Requested Date"
-            value={data.requestdate}
-            icon={
-              <MaterialIcons
-                name="date-range"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const empGrade =
+            data.empgrade ||
+            data.grade ||
+            data.emp_grade;
 
-        {data.startdate ? (
-          <DetailRow
-            label="From Date"
-            value={data.startdate}
-            icon={
-              <MaterialIcons
-                name="calendar-today"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const reqDate =
+            data.requestdate ||
+            data.request_date ||
+            data.requestDate ||
+            data.req_date;
 
-        {data.enddate ? (
-          <DetailRow
-            label="To Date"
-            value={data.enddate}
-            icon={
-              <MaterialIcons
-                name="event"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const startDate =
+            data.startdate ||
+            data.start_date ||
+            data.startDate ||
+            data.from_date ||
+            data.fromdate;
 
-        {data.reason ? (
-          <DetailRow
-            label="Reason"
-            value={data.reason}
-            icon={
-              <MaterialIcons
-                name="chat-bubble-outline"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const endDate =
+            data.enddate ||
+            data.end_date ||
+            data.endDate ||
+            data.enddatee ||
+            data.to_date ||
+            data.todate;
 
-        {isAdvanceType && (data.requested_amount !== undefined || data.reqamount !== undefined) ? (
-          <DetailRow
-            label="Requested Amount"
-            value={`₹${Number(data.requested_amount ?? data.reqamount ?? 0).toLocaleString()}`}
-            highlighted
-            icon={
-              <MaterialIcons
-                name="attach-money"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const reasonText =
+            data.reason ||
+            data.tourreason ||
+            data.travel_reason;
 
-        {displayBranchName ? (
-          <DetailRow
-            label="Branch"
-            value={displayBranchName}
-            icon={
-              <MaterialIcons
-                name="location-city"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          const advAmount =
+            data.requested_amount ??
+            data.reqamount ??
+            data.req_amount ??
+            data.advanceamount ??
+            data.advance_amount ??
+            data.sanctioned_amount ??
+            data.amount;
 
-        {displayApproverName ? (
-          <DetailRow
-            label="Approver"
-            value={displayApproverName}
-            highlighted
-            icon={
-              <MaterialIcons
-                name="verified-user"
-                size={16}
-                color={CustomColors.textGray}
-              />
-            }
-          />
-        ) : null}
+          return (
+            <>
+              {displayEmployee ? (
+                <DetailRow
+                  label="Employee"
+                  value={displayEmployee}
+                  icon={
+                    <MaterialIcons
+                      name="person"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {empGrade ? (
+                <DetailRow
+                  label="Grade"
+                  value={empGrade}
+                  icon={
+                    <MaterialIcons
+                      name="military-tech"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {reqDate ? (
+                <DetailRow
+                  label="Requested Date"
+                  value={reqDate}
+                  icon={
+                    <MaterialIcons
+                      name="date-range"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {startDate ? (
+                <DetailRow
+                  label="From Date"
+                  value={startDate}
+                  icon={
+                    <MaterialIcons
+                      name="calendar-today"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {endDate ? (
+                <DetailRow
+                  label="To Date"
+                  value={endDate}
+                  icon={
+                    <MaterialIcons
+                      name="event"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {reasonText ? (
+                <DetailRow
+                  label="Reason"
+                  value={reasonText}
+                  icon={
+                    <MaterialIcons
+                      name="chat-bubble-outline"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {(isAdvanceType || (advAmount !== undefined && advAmount !== null && advAmount !== "")) &&
+              advAmount !== undefined &&
+              advAmount !== null &&
+              advAmount !== "" ? (
+                <DetailRow
+                  label="Requested Amount"
+                  value={`₹${Number(advAmount ?? 0).toLocaleString()}`}
+                  highlighted
+                  icon={
+                    <MaterialIcons
+                      name="attach-money"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {displayBranchName ? (
+                <DetailRow
+                  label="Branch"
+                  value={displayBranchName}
+                  icon={
+                    <MaterialIcons
+                      name="location-city"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+
+              {displayApproverName ? (
+                <DetailRow
+                  label="Approver"
+                  value={displayApproverName}
+                  highlighted
+                  icon={
+                    <MaterialIcons
+                      name="verified-user"
+                      size={16}
+                      color={CustomColors.textGray}
+                    />
+                  }
+                />
+              ) : null}
+            </>
+          );
+        })()}
       </View>
     </TouchableOpacity>
   );

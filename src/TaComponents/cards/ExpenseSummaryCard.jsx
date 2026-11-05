@@ -18,61 +18,64 @@ const ExpenseSummaryCard = ({ expense, onPress }) => {
   const styles = StyleSheet.create({
     cardContainer: {
       marginHorizontal: horizontalScale(0),
-      marginVertical: verticalScale(8),
-      backgroundColor: CustomColors.cardBackground,
-      borderRadius: moderateScale(16),
-      padding: moderateScale(16),
-      shadowColor: CustomColors.iconBlack,
-      shadowOffset: { width: 0, height: verticalScale(4) },
-      shadowOpacity: 0.1,
-      shadowRadius: moderateScale(8),
-      elevation: 6,
+      marginVertical: verticalScale(6),
+      backgroundColor: isDark ? CustomColors.cardBackground : '#ffffff',
+      borderRadius: moderateScale(14),
+      padding: moderateScale(14),
+      borderWidth: 1,
+      borderColor: isDark ? '#334155' : '#e2e8f0',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: verticalScale(2) },
+      shadowOpacity: 0.05,
+      shadowRadius: moderateScale(6),
+      elevation: 2,
       width: '100%',
-      minHeight: verticalScale(250),
-      justifyContent: 'space-between',
     },
     headerRow: {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      borderBottomWidth: moderateScale(1),
-      borderBottomColor: CustomColors.borderColor,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? '#334155' : '#f1f5f9',
       paddingBottom: verticalScale(8),
-      marginBottom: verticalScale(12),
+      marginBottom: verticalScale(10),
     },
     crNoContainer: {
       flex: 1,
     },
     labelText: {
-      fontFamily: Fonts.regular,
-      fontSize: moderateScale(11),
-      color: CustomColors.textLightGray,
+      fontFamily: Fonts.medium,
+      fontSize: moderateScale(10),
+      color: CustomColors.textMuted || CustomColors.textLightGray,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: verticalScale(1),
     },
     crNoText: {
       fontFamily: Fonts.bold,
-      fontSize: moderateScale(18),
-      color: CustomColors.primaryBlue,
-      marginRight: horizontalScale(4),
+      fontSize: moderateScale(16),
+      color: CustomColors.primaryBlue || CustomColors.appThemeColor,
+      marginRight: horizontalScale(6),
     },
     statusText: {
       fontFamily: Fonts.semiBold,
-      fontSize: moderateScale(13),
+      fontSize: moderateScale(11),
       color: CustomColors.white,
-      paddingVertical: verticalScale(7),
-      paddingHorizontal: horizontalScale(16),
-      borderRadius: moderateScale(20),
+      paddingVertical: verticalScale(4),
+      paddingHorizontal: horizontalScale(10),
+      borderRadius: moderateScale(12),
       overflow: "hidden",
       maxWidth: horizontalScale(200),
       textAlign: "center",
-      letterSpacing: 0.5,
+      letterSpacing: 0.3,
     },
     detailsSection: {
-      marginTop: verticalScale(4),
+      marginTop: verticalScale(2),
     },
     detailRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: verticalScale(8),
+      marginBottom: verticalScale(7),
     },
     detailLabelWrapper: {
       flexDirection: "row",
@@ -84,16 +87,31 @@ const ExpenseSummaryCard = ({ expense, onPress }) => {
     },
     detailLabel: {
       fontFamily: Fonts.medium,
-      fontSize: moderateScale(13),
-      color: CustomColors.textDarkGray,
+      fontSize: moderateScale(12),
+      color: CustomColors.textMuted || CustomColors.textDarkGray,
     },
     detailValue: {
-      fontFamily: Fonts.regular,
-      fontSize: moderateScale(13),
-      color: CustomColors.textBlack,
+      fontFamily: Fonts.semiBold,
+      fontSize: moderateScale(12),
+      color: CustomColors.textDark || CustomColors.textBlack,
       textAlign: "right",
-      flex: 2,
+      flex: 1.8,
       flexShrink: 1,
+    },
+    cardFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      paddingTop: verticalScale(8),
+      marginTop: verticalScale(4),
+      borderTopWidth: 1,
+      borderTopColor: isDark ? '#334155' : '#f1f5f9',
+    },
+    cardFooterText: {
+      fontSize: moderateScale(11),
+      fontFamily: Fonts.semiBold,
+      color: CustomColors.appThemeColor,
+      marginRight: horizontalScale(2),
     },
     amountSection: {
       marginTop: verticalScale(16),
@@ -207,9 +225,9 @@ const ExpenseSummaryCard = ({ expense, onPress }) => {
       <View style={styles.headerRow}>
         <View style={styles.crNoContainer}>
           <Text allowFontScaling={false} style={styles.labelText}>Travel No.</Text>
-          <TouchableOpacity onPress={() => copyCrNoToClipboard(expense?.tourid || expense?.id)}>
+          <TouchableOpacity onPress={() => copyCrNoToClipboard(expense?.requestno || expense?.tour_id || 'N/A')} activeOpacity={0.7}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text allowFontScaling={false} style={styles.crNoText}>{expense?.tourid || expense?.id || 'N/A'}</Text>
+              <Text allowFontScaling={false} style={styles.crNoText}>{expense?.requestno || expense?.tour_id || 'N/A'}</Text>
               <MaterialIcons name="content-copy" size={moderateScale(14)} color={CustomColors.textGray} />
             </View>
           </TouchableOpacity>
@@ -284,12 +302,16 @@ const ExpenseSummaryCard = ({ expense, onPress }) => {
         )}
       </View>
 
-      {/* <View style={styles.amountSection}>
-        <Text style={styles.amountLabel}>Approved Amount</Text>
-        <Text style={styles.amountText}>
-          ₹ {expense.app_amount ? expense.app_amount.toFixed(2) : '0.00'}
+      <View style={styles.cardFooter}>
+        <Text allowFontScaling={false} style={styles.cardFooterText}>
+          View Expense Details
         </Text>
-      </View> */}
+        <MaterialIcons
+          name="chevron-right"
+          size={moderateScale(18)}
+          color={CustomColors.appThemeColor}
+        />
+      </View>
     </TouchableOpacity>
   );
 };
