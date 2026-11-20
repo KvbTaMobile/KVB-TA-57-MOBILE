@@ -3,7 +3,7 @@ const ENV = "DEV"; // DEV, SIT, UAT, PROD
 
 const ENV_CONFIG = {
   DEV: {
-    baseUrl: "https://kvbapi.vsolv.co.in",
+    baseUrl: "https://emc.vysfin.vsolv.co.in",
     showCaptcha: false,
   },
   SIT: {
